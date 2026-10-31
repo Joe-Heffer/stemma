@@ -26,6 +26,7 @@ parts:
     source: builtin
     generator: parts/bass.py
     sound: {preset: saw-bass, params: {sub: 0.15}}
+    score: {clef: bass_8}   # written an octave up, as for bass guitar, to avoid ledger lines
     mix:
       gain_db: -3
       fx:

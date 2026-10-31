@@ -81,6 +81,15 @@
         "fade_out_seconds": {"type": "number", "minimum": 0, "default": 0.5}
       }
     },
+    "score": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Sheet music export with `stemma score`.",
+      "properties": {
+        "grid": {"enum": [4, 8, 12, 16, 24, 32], "default": 16, "description": "Quantise to this note value: 16 is semiquavers, 12 and 24 allow triplets."},
+        "formats": {"type": "array", "items": {"enum": ["musicxml", "ly", "pdf"]}, "uniqueItems": true, "default": ["musicxml", "ly", "pdf"]}
+      }
+    },
     "targets": {
       "type": "object",
       "additionalProperties": false,
@@ -153,6 +162,17 @@
             "mute": {"type": "boolean", "default": false},
             "solo": {"type": "boolean", "default": false},
             "fx": {"$ref": "#/$defs/fx_chain"}
+          }
+        },
+        "score": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "How `stemma score` writes this part as sheet music.",
+          "properties": {
+            "include": {"type": "boolean", "default": true},
+            "clef": {"enum": ["auto", "treble", "treble_8", "bass", "bass_8", "alto", "percussion"], "default": "auto"},
+            "octave_shift": {"type": "integer", "minimum": -3, "maximum": 3, "default": 0, "description": "Octaves to transpose the written part, e.g. 1 for bass guitar notation."},
+            "name": {"type": "string", "description": "Staff label. Defaults to the part name."}
           }
         },
         "notes": {"type": "string"}
