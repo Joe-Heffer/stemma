@@ -16,7 +16,7 @@ parts:
     role: drums
     source: builtin
     generator: parts/drums.py
-    sound: {preset: kit}
+    sound: {preset: kit, params: {kick_hz: 55, kick_decay: 0.18}}   # kick tuned to A1
     mix:
       gain_db: -1
       bus: drums
@@ -25,11 +25,11 @@ parts:
     role: bass
     source: builtin
     generator: parts/bass.py
-    sound: {preset: saw-bass}
+    sound: {preset: saw-bass, params: {sub: 0.15}}
     mix:
       gain_db: -3
       fx:
-        - {type: highpass, cutoff_hz: 32}
+        - {type: highpass, cutoff_hz: 40, q: 0.8}
         - {type: peak, freq_hz: 300, gain_db: -2.5, q: 1.0}
         - {type: compressor, threshold_db: -16, ratio: 3, attack_ms: 15, release_ms: 120}
 
@@ -40,10 +40,11 @@ parts:
     sound: {preset: pulse-lead}
     mix:
       gain_db: -2
-      pan: 0.1
-      sends: {verb: -9}
+      pan: 0.12
+      sends: {verb: -7}
       fx:
         - {type: highpass, cutoff_hz: 180}
+        - {type: chorus, rate_hz: 0.6, depth: 0.3, mix: 0.3}
         - {type: delay, beats: 0.75, feedback: 0.28, mix: 0.18}
 
   - name: pad
@@ -53,11 +54,13 @@ parts:
     generator: parts/pad.py
     sound: {soundfont: FluidR3_GM, program: 89}   # GM "Pad 2 (warm)"
     mix:
-      gain_db: -9
-      width: 1.3
+      gain_db: -5
+      pan: -0.15
+      width: 1.8
       sends: {verb: -6}
       fx:
         - {type: highpass, cutoff_hz: 220}
+        - {type: peak, freq_hz: 650, gain_db: -4, q: 1.2}   # room for the lead's fundamentals
 
 buses:
   - name: drums
@@ -83,7 +86,7 @@ master:
   fade_out_seconds: 1
 
 targets:
-  stereo_width: [0.02, 0.4]
+  stereo_width_above_300hz: [0.05, 0.4]
   crest_factor_db: [8, 18]
   bands:
     sub: [-12, -3]
