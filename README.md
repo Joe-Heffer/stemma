@@ -149,10 +149,20 @@ any other part. `midi` and `score` skip it.
   allow your use (the free tier is non-commercial) and record the plan in the
   track’s `notes.md`.
 
+## Agent skills
+
+`.claude/skills/` holds skills that Claude Code loads on demand: starting a
+track from a brief, writing part generators, one analysis-driven mix
+revision, mastering, recording a revision, generated (ElevenLabs) parts and
+adding licensed sounds. Each is a step-by-step procedure with the exact
+commands and the figures to read. CLAUDE.md lists them; `tests/test_skills.py`
+keeps their commands in step with the CLI.
+
 ## Repository layout
 
 ```
 CLAUDE.md                 instructions for agents working in this repo
+.claude/skills/           agent skills: new track, write a part, mix revision, master, …
 docs/mixing.md            mixing and mastering reference
 src/stemma/               the package and CLI
   schema/track.schema.json  JSON Schema for track.yaml
