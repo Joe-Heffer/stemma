@@ -1,0 +1,30 @@
+# {{title}}: see src/stemma/schema/track.schema.json for every field.
+title: "{{title}}"
+tempo: 100
+key: C minor
+time_signature: [4, 4]
+sample_rate: 48000
+seed: 1
+
+sections:
+  - {name: a, bars: 4}
+  - {name: b, bars: 4}
+
+parts:
+  - name: drums
+    role: drums
+    source: builtin
+    generator: parts/drums.py
+    sound: {preset: kit}
+    mix: {gain_db: -2}
+
+  - name: bass
+    role: bass
+    source: builtin
+    generator: parts/bass.py
+    sound: {preset: saw-bass}
+    mix: {gain_db: -4, fx: [{type: highpass, cutoff_hz: 35}]}
+
+master:
+  lufs: -14
+  true_peak: -1
