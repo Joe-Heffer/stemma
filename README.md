@@ -7,7 +7,8 @@ tracks and sounds from a written brief, with no DAW and no GUI.
 * Text is the source of truth. A track is a YAML spec, Python part generators,
   MIDI and patch sources. Rendered audio is a gitignored build artefact.
 * Open formats throughout: YAML validated by JSON Schema, Standard MIDI Files,
-  SF2/SF3, SFZ, Csound and Faust source, WAV and FLAC.
+  SF2/SF3, SFZ, Csound and Faust source, WAV and FLAC, and sheet music as
+  MusicXML and LilyPond.
 * `stemma analyse` turns audio into JSON (loudness, true peak, spectral
   balance, tempo, key, stereo width, clipping) so an agent can "hear" its work
   and iterate.
@@ -28,6 +29,7 @@ Optional external renderers, each detected at run time (`stemma doctor`):
 | Csound | `source: csound` | `sudo apt install csound` |
 | Faust + a C++ compiler | `source: faust` | `sudo apt install faust g++` |
 | Pedalboard | higher-quality mix effects | `uv sync --extra fx` |
+| LilyPond | PDF sheet music from `stemma score` | `sudo apt install lilypond` |
 
 SoX and ffmpeg are handy for inspecting renders but not required.
 
@@ -67,6 +69,7 @@ All commands take a track slug (a folder under `tracks/`) and print JSON on stdo
 | `stemma master <slug> [--section S]` | Loudness-normalise and true-peak limit to WAV and FLAC |
 | `stemma analyse <slug> [--section S] [--stem P]` | Measurements per stem, mix and master, plus warnings |
 | `stemma analyse --file X.wav` | Analyse any audio file |
+| `stemma score <slug> [--part P] [--section S] [--format …]` | Sheet music in `renders/score/`: MusicXML, LilyPond and PDF |
 | `stemma all <slug> [--section S]` | The whole chain |
 | `stemma doctor` | Which external tools, soundfonts and engines are available |
 | `stemma sounds list` / `fetch [NAME]` | Shared sounds from `sounds/manifest.yaml` |
@@ -126,9 +129,45 @@ integrated, −1 dBTP) and optional analysis target ranges. See
 scipy implementations. The engine used is recorded in `renders/mix.json`;
 pin it with `mix.engine` when you need renders to match across machines.
 
+## Sheet music
+
+`stemma score` reads each part's MIDI file (generated or hand-written),
+quantises it to `score.grid` and writes notation with
+[music21](https://web.mit.edu/music21/): bars, rests, ties over barlines,
+chords where notes overlap, pitches spelt for the key, a rehearsal mark per
+section and a dynamic per section from the mean velocity. Drums go on a
+percussion stave using the GM drum map.
+
+* `renders/score/<slug>.musicxml` opens in MuseScore, Dorico, Sibelius,
+  Finale and Verovio.
+* `renders/score/<slug>.ly` is LilyPond source. With `lilypond` installed it
+  is compiled to `<slug>.pdf`; without it the PDF is skipped with a warning.
+
+```yaml
+score:
+  grid: 16                         # 4, 8, 16, 32; 12 or 24 allow triplets
+  formats: [musicxml, ly, pdf]
+parts:
+  - name: bass
+    score: {clef: bass_8}          # auto, treble, treble_8, bass, bass_8, alto, percussion
+  - name: fx
+    score: {include: false}        # leave a part off the score
+```
+
+Each part also takes `octave_shift` (transpose the written part) and `name`
+(the staff label). The report lists, per part, the stave, bar count, notes,
+chords, rests, written range and how far quantising moved notes. `off_grid`
+counts notes more than a quarter of a grid step away from the grid, which
+usually means the part needs a finer or triplet grid.
+
+The score is a reading of the MIDI, not an engraving: humanised timing is
+snapped to the grid and note lengths are rounded. In flat keys every
+accidental is spelt as a flat and in sharp keys as a sharp.
+
 ## Licences
 
 stemma is MIT licensed. Copyleft tools are only ever run as separate
 commands, never linked: FluidSynth and Csound (LGPL), the Faust compiler (GPL;
 its generated code is not), SoX and ffmpeg. Pedalboard (GPL-3.0) is an
-optional extra. Sounds and their licences are listed in `sounds/LICENCES.md`.
+optional extra. music21 (BSD-3) is a core dependency; LilyPond (GPL) is
+only run as a command. Sounds and their licences are listed in `sounds/LICENCES.md`.

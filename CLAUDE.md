@@ -31,6 +31,10 @@ renderers exist.
    change ("Lead: answer phrase climbs to G5 to lift into the outro"), not the
    file edits. Add a line to the revision log in `notes.md`.
 8. When the section works, run `stemma all <slug>` for the whole track.
+9. To check that parts read sensibly, or when sheet music is wanted, run
+   `stemma score <slug>` (MusicXML, LilyPond and, with `lilypond`, PDF in
+   `renders/score/`). Act on its `warnings`: `off_grid` notes mean the
+   `score.grid` is too coarse for the part.
 
 Work in small steps. Do not rewrite several parts and the mix at once: you
 will not know which change helped.
@@ -42,6 +46,7 @@ will not know which change helped.
   freely licensed and recorded in `sounds/LICENCES.md` and, for shared
   sounds, `sounds/manifest.yaml`, in the same commit. Do not use material
   with non-commercial or unclear terms.
+* Score output in `renders/score/` is build output too: do not commit it.
 * Keep generators deterministic: use `ctx.rng` (seeded from `seed` in the
   spec), never `random` or the clock.
 * Ask before adding Python dependencies or system packages.

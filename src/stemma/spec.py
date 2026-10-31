@@ -23,6 +23,8 @@ DEFAULT_MASTER = {
     "fade_out_seconds": 0.5,
 }
 
+DEFAULT_SCORE = {"grid": 16, "formats": ["musicxml", "ly", "pdf"]}
+
 
 @cache
 def schema() -> dict:
@@ -91,6 +93,7 @@ class Spec:
         self.master = {**DEFAULT_MASTER, **data.get("master", {})}
         self.mix = {"engine": "auto", "gain_db": 0.0, "fx": [], **data.get("mix", {})}
         self.buses = data.get("buses", [])
+        self.score = {**DEFAULT_SCORE, **data.get("score", {})}
         self.targets = data.get("targets", {})
         self.parts = data["parts"]
         bar = 0

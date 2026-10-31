@@ -27,6 +27,12 @@ class NoteEvent:
     velocity: int
 
 
+def is_drum(part: dict) -> bool:
+    """True when a part is written on MIDI channel 10 (GM percussion)."""
+    sound = part.get("sound", {})
+    return bool(sound.get("drums", part.get("role") in ("drums", "percussion")))
+
+
 def run_generator(spec: Spec, part: dict) -> Context:
     path = spec.dir / part["generator"]
     if not path.is_file():
@@ -52,8 +58,7 @@ def write_part(spec: Spec, part: dict, ctx: Context, path: Path) -> pretty_midi.
         pretty_midi.TimeSignature(spec.numerator, spec.denominator, 0.0)
     )
     sound = part.get("sound", {})
-    is_drum = bool(sound.get("drums", part.get("role") in ("drums", "percussion")))
-    inst = pretty_midi.Instrument(program=sound.get("program", 0), is_drum=is_drum,
+    inst = pretty_midi.Instrument(program=sound.get("program", 0), is_drum=is_drum(part),
                                   name=part["name"])
     bank = sound.get("bank")
     if bank is not None:

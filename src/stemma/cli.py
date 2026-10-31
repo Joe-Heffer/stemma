@@ -79,6 +79,12 @@ def cmd_master(a) -> None:
     _print(master(_spec(a.slug), a.section))
 
 
+def cmd_score(a) -> None:
+    from .score import score
+
+    _print(score(_spec(a.slug), a.section, a.part, a.format))
+
+
 def cmd_analyse(a) -> None:
     from .analyse import analyse, analyse_file
 
@@ -123,6 +129,7 @@ def cmd_doctor(a) -> None:
     tools["ffmpeg"] = shutil.which("ffmpeg")
     tools["sox"] = shutil.which("sox")
     tools["lilypond"] = shutil.which("lilypond")
+    from importlib.metadata import version
     found = {}
     for name in sounds.manifest():
         try:
@@ -130,7 +137,8 @@ def cmd_doctor(a) -> None:
         except StemmaError:
             found[name] = None
     _print({"stemma": __version__, "root": str(repo_root()), "tools": tools,
-            "pedalboard": pedalboard_available(), "sounds": found})
+            "pedalboard": pedalboard_available(), "music21": version("music21"),
+            "sounds": found})
 
 
 def cmd_sounds(a) -> None:
@@ -168,6 +176,11 @@ def build_parser() -> argparse.ArgumentParser:
                         ("master", cmd_master, "loudness-normalise and limit the mix")):
         s = add(name, fn, h)
         s.add_argument("--section")
+    s = add("score", cmd_score, "write sheet music: MusicXML, LilyPond and PDF")
+    s.add_argument("--part")
+    s.add_argument("--section")
+    s.add_argument("--format", nargs="+", choices=["musicxml", "ly", "pdf"],
+                   help="override score.formats from the spec")
     s = sub.add_parser("analyse", aliases=["analyze"], help="print analysis JSON")
     s.add_argument("slug", nargs="?")
     s.add_argument("--section")
