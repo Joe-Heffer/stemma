@@ -125,6 +125,8 @@
         "stereo_width": {"$ref": "#/$defs/range"},
         "stereo_width_above_300hz": {"$ref": "#/$defs/range"},
         "crest_factor_db": {"$ref": "#/$defs/range"},
+        "loudness_range_lu": {"$ref": "#/$defs/range"},
+        "plr_db": {"$ref": "#/$defs/range"},
         "bands": {
           "type": "object",
           "additionalProperties": false,

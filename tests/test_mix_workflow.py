@@ -152,3 +152,23 @@ def test_master_chain_and_formats(demo, capsys):
     assert set(report["limiter"]) == {"max_db", "mean_db", "percent_over_1db"}
     assert (demo / "tracks/demo/renders/master.mp3").stat().st_size > 1000
     assert abs(report["lufs"] + 14) < 0.5
+
+
+def test_analyse_sections_and_delta(demo, capsys):
+    run(capsys, "mix", "demo")
+    run(capsys, "master", "demo")
+    first = run(capsys, "analyse", "demo")
+    assert first["delta"] is None
+    assert set(first["sections"]) == {"a", "b"}
+    assert first["sections"]["a"]["lufs_integrated"] is not None
+    assert "max_db" in first["master"]["limiter"]
+    assert first["master"]["loudness_range_lu"] is not None
+    edit_spec(demo, lambda d: part(d, "bass")["mix"].update(gain_db=-10))
+    run(capsys, "mix", "demo")
+    run(capsys, "master", "demo")
+    second = run(capsys, "analyse", "demo")
+    change = second["delta"]["changed"]["stems.bass.lufs_integrated"]
+    assert change["diff"] == pytest.approx(-6, abs=0.3)
+    # Re-running with nothing changed still reports the last change.
+    third = run(capsys, "analyse", "demo")
+    assert third["delta"]["changed"]["stems.bass.lufs_integrated"] == change
