@@ -348,7 +348,7 @@ def section_figures(spec: Spec, x: np.ndarray, sr: int) -> dict:
 DELTA_NESTED = ("bands_db", "limiter")
 DELTA_STEM_FIELDS = ("lufs_integrated", "crest_factor_db", "spectral_centroid_hz",
                      "stereo_width_above_300hz", "bands_db")
-DELTA_MIN = 0.05
+DELTA_MIN = 0.1
 
 
 def _numbers(m: dict, fields=None) -> dict:
