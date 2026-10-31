@@ -16,7 +16,9 @@ def test_new_then_full_chain(scratch_root, capsys):
     assert master["true_peak_dbtp"] <= -0.95
     assert master["clipped_samples"] == 0
     renders = scratch_root / "tracks/demo/renders"
-    for f in ("master.wav", "master.flac", "mix.wav", "analysis.json", "stems/drums.wav"):
+    assert report["analysis"]["stems"]["bass"]["measured"] == "post-mix"
+    for f in ("master.wav", "master.flac", "mix.wav", "analysis.json", "stems/drums.wav",
+              "post-mix/bass.wav"):
         assert (renders / f).is_file(), f
 
     # A second render hits the cache.

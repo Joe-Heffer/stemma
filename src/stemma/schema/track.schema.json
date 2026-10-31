@@ -87,6 +87,7 @@
       "description": "Optional ranges; analyse prints a warning when a measurement falls outside them.",
       "properties": {
         "stereo_width": {"$ref": "#/$defs/range"},
+        "stereo_width_above_300hz": {"$ref": "#/$defs/range"},
         "crest_factor_db": {"$ref": "#/$defs/range"},
         "bands": {
           "type": "object",

@@ -56,11 +56,17 @@ will not know which change helped.
 | `crest_factor_db` | peak minus RMS | 8–14 dB for a punchy master; under 6 sounds squashed |
 | `bands_db` | share of energy per band (sub < 60, low 60–250, low_mid 250–2k, high_mid 2–6k, air > 6k), 0 dB = all | see mixing notes |
 | `spectral_centroid_hz` | brightness | rising when you meant to warm something up is a red flag |
-| `stereo_width` | side energy share, 0 mono, 0.5 very wide | 0.05–0.3 for a full mix; bass and kick near 0 |
+| `stereo_width` | side energy share, 0 mono, 0.5 very wide | low on bass-heavy mixes, since kick and bass are mono |
+| `stereo_width_above_300hz` | the same above 300 Hz | 0.05–0.3 for a full mix |
 | `correlation` | L/R correlation | keep above 0; negative collapses in mono |
 | `tempo_bpm`, `key` | estimates from audio | should match the spec (half/double tempo and relative keys are accepted) |
 | `clipped_samples` | samples at full scale | 0 |
-| `dominant_band_by_stem` | which band each stem lives in | two stems sharing `low` or `low_mid` hints at masking |
+| `octave_bands_db` | absolute power per octave (31.5 Hz–16 kHz), per stem | compare stems with each other, not with fixed numbers |
+| `masking` | stem pairs both strong, and within 6 dB, in one octave | empty, or explained (kick and bass often share 63 Hz) |
+
+Stem figures are measured post-fader (after part fx, gain and pan, from
+`renders/post-mix/`) once `mix` has run, so they show what each part
+contributes. `measured` says which version was used.
 
 The analysis is a proxy for listening, not a replacement. Use it to catch
 problems and to confirm that a change did what you intended.
@@ -92,7 +98,8 @@ problems and to confirm that a change did what you intended.
 
 ## Common mixing problems
 
-* **Masking** (parts blur together): check `dominant_band_by_stem`. Separate
+* **Masking** (parts blur together): check `masking` and the stems'
+  `octave_bands_db`. Separate
   by register first, then by EQ (cut one part where the other lives), then by
   panning. Cutting is better than boosting.
 * **Low-end build-up** (`sub` or `low` too high on the mix, crest factor

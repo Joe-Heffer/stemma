@@ -41,7 +41,7 @@ warning when FluidSynth is missing.
 ```sh
 git clone https://github.com/joe-heffer/stemma && cd stemma
 make all TRACK=example-sketch          # midi → render → mix → master → analyse
-ls tracks/example-sketch/renders       # stems/, mix.wav, master.wav, master.flac, analysis.json
+ls tracks/example-sketch/renders       # stems/, post-mix/, mix.wav, master.wav, master.flac, analysis.json
 make test
 ```
 

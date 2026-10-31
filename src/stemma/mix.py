@@ -10,7 +10,7 @@ import soundfile as sf
 from . import dsp
 from .errors import StemmaError
 from .fx import apply_chain, choose_engine
-from .paths import render_root, stems_dir
+from .paths import post_mix_dir, render_root, stems_dir
 from .spec import Spec
 
 
@@ -35,6 +35,10 @@ def mix(spec: Spec, section: str | None = None) -> dict:
     buses = {b["name"]: np.zeros((n, 2)) for b in spec.buses}
     main = np.zeros((n, 2))
     report = {"engine": engine, "parts": [], "buses": []}
+    post = post_mix_dir(spec.dir, section)
+    post.mkdir(parents=True, exist_ok=True)
+    for old in post.glob("*.wav"):
+        old.unlink()
     for part in spec.parts:
         m = part.get("mix", {})
         name = part["name"]
@@ -52,6 +56,8 @@ def mix(spec: Spec, section: str | None = None) -> dict:
         x = apply_chain(x, m.get("fx", []), sr, tempo, engine)
         x = x * dsp.db_to_amp(m.get("gain_db", 0))
         x = _fit(dsp.pan_stereo(x, m.get("pan", 0), m.get("width", 1)), n)
+        # Post-fader stem, as heard in the mix, for analysis.
+        sf.write(str(post / f"{name}.wav"), x.astype(np.float32), sr, subtype="FLOAT")
         dest = m.get("bus", "master")
         (main if dest == "master" else buses[dest])[:] += x
         for bus, level in m.get("sends", {}).items():

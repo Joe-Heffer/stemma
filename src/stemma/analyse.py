@@ -11,7 +11,7 @@ import soundfile as sf
 
 from . import dsp
 from .errors import StemmaError
-from .paths import render_root, stems_dir
+from .paths import post_mix_dir, render_root, stems_dir
 from .spec import Spec
 from .theory import NAMES_SHARP
 
@@ -34,6 +34,9 @@ def _r(x, nd=2):
     return None if x is None or not np.isfinite(x) else round(float(x), nd)
 
 
+OCTAVES_HZ = [31.5, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
+
+
 def band_energy(mono: np.ndarray, sr: int) -> dict:
     """Share of spectral energy per band in dB relative to the total (0 dB = all)."""
     n_fft = 8192
@@ -48,7 +51,36 @@ def band_energy(mono: np.ndarray, sr: int) -> dict:
         e = pxx[(f >= lo) & (f < min(hi, sr / 2))].sum()
         out[name] = _r(10 * np.log10(e / total)) if total > 0 and e > 0 else -120.0
     centroid = float((f * pxx).sum() / pxx.sum()) if pxx.sum() > 0 else 0.0
-    return {"bands_db": out, "spectral_centroid_hz": _r(centroid, 0)}
+    # Absolute octave-band power (dB, arbitrary reference) for comparing stems.
+    octaves = {}
+    for fc in OCTAVES_HZ:
+        sel = (f >= fc / np.sqrt(2)) & (f < min(fc * np.sqrt(2), sr / 2))
+        e = pxx[sel].sum() * (f[1] - f[0])
+        label = str(int(fc)) if fc >= 63 else str(fc)
+        octaves[label] = _r(10 * np.log10(e), 1) if e > 0 else -150.0
+    return {"bands_db": out, "spectral_centroid_hz": _r(centroid, 0), "octave_bands_db": octaves}
+
+
+def masking_pairs(stems: dict, near_peak_db: float = 4.0, level_gap_db: float = 6.0) -> list:
+    """Pairs of stems that are both strong, and at similar levels, in the same octave.
+
+    For each stem, an octave counts as "strong" when it is within ``near_peak_db``
+    of that stem's loudest octave. Two stems conflict in an octave when both are
+    strong there and their levels are within ``level_gap_db``.
+    """
+    names = [n for n, m in stems.items() if not m.get("silent") and "octave_bands_db" in m]
+    out = []
+    for i, a in enumerate(names):
+        for b in names[i + 1:]:
+            oa, ob = stems[a]["octave_bands_db"], stems[b]["octave_bands_db"]
+            pa, pb = max(oa.values()), max(ob.values())
+            for band in oa:
+                la, lb = oa[band], ob[band]
+                if (la >= pa - near_peak_db and lb >= pb - near_peak_db
+                        and abs(la - lb) <= level_gap_db):
+                    out.append({"stems": [a, b], "octave_hz": band,
+                                "level_diff_db": _r(abs(la - lb), 1)})
+    return out
 
 
 def estimate_key(mono: np.ndarray, sr: int) -> dict:
@@ -82,16 +114,27 @@ def estimate_tempo(mono: np.ndarray, sr: int) -> float | None:
     return _r(np.atleast_1d(tempo)[0], 1)
 
 
-def stereo_image(x: np.ndarray) -> dict:
-    if x.shape[1] < 2:
-        return {"stereo_width": 0.0, "correlation": 1.0}
-    left, right = x[:, 0], x[:, 1]
+def _width(left: np.ndarray, right: np.ndarray) -> float:
     mid, side = (left + right) / 2, (left - right) / 2
     e_mid, e_side = np.sum(mid**2), np.sum(side**2)
-    width = e_side / (e_mid + e_side) if e_mid + e_side > 0 else 0.0
+    return float(e_side / (e_mid + e_side)) if e_mid + e_side > 0 else 0.0
+
+
+def stereo_image(x: np.ndarray, sr: int) -> dict:
+    """Side-energy share broadband and above 300 Hz.
+
+    Kick and bass are (rightly) mono and dominate broadband energy, so the
+    above-300 Hz figure is the better guide to how wide a mix feels.
+    """
+    if x.shape[1] < 2:
+        return {"stereo_width": 0.0, "stereo_width_above_300hz": 0.0, "correlation": 1.0}
+    left, right = x[:, 0], x[:, 1]
+    hi = dsp.filt(dsp.filt(x[:, :2], "highpass", 300, sr), "highpass", 300, sr)
     denom = np.sqrt(np.sum(left**2) * np.sum(right**2))
     corr = np.sum(left * right) / denom if denom > 0 else 1.0
-    return {"stereo_width": _r(width, 3), "correlation": _r(corr, 3)}
+    return {"stereo_width": _r(_width(left, right), 3),
+            "stereo_width_above_300hz": _r(_width(hi[:, 0], hi[:, 1]), 3),
+            "correlation": _r(corr, 3)}
 
 
 def analyse_audio(x: np.ndarray, sr: int, full: bool = True) -> dict:
@@ -116,7 +159,7 @@ def analyse_audio(x: np.ndarray, sr: int, full: bool = True) -> dict:
         "rms_dbfs": _r(dsp.amp_to_db(rms)),
         "crest_factor_db": None if silent else _r(dsp.amp_to_db(peak) - dsp.amp_to_db(rms)),
         "clipped_samples": int(np.sum(np.abs(x) >= CLIP_LEVEL)),
-        **stereo_image(x),
+        **stereo_image(x, sr),
     }
     if silent:
         out["silent"] = True
@@ -167,7 +210,7 @@ def check_targets(spec: Spec, name: str, m: dict, is_master: bool) -> list[str]:
         if m["correlation"] is not None and m["correlation"] < 0:
             warn.append(f"{name}: negative L/R correlation, mono collapse risk")
         t = spec.targets
-        for key in ("stereo_width", "crest_factor_db"):
+        for key in ("stereo_width", "stereo_width_above_300hz", "crest_factor_db"):
             if key in t and m.get(key) is not None and not t[key][0] <= m[key] <= t[key][1]:
                 warn.append(f"{name}: {key} {m[key]} outside {t[key]}")
         for band, rng in t.get("bands", {}).items():
@@ -184,10 +227,15 @@ def analyse(spec: Spec, section: str | None = None, stem: str | None = None) -> 
                     "spec": {"tempo": spec.tempo, "key": spec.key}, "stems": {}}
     names = [stem] if stem else [p["name"] for p in spec.parts]
     warnings_: list[str] = []
+    post = post_mix_dir(spec.dir, section)
     for name in names:
         wav = sdir / f"{name}.wav"
         if wav.is_file():
-            m = analyse_file(wav, full=False)
+            # Prefer the post-fader version, unless the raw stem is newer than the mix.
+            pm = post / f"{name}.wav"
+            fresh = pm.is_file() and pm.stat().st_mtime >= wav.stat().st_mtime
+            m = analyse_file(pm if fresh else wav, full=False)
+            m["measured"] = "post-mix" if fresh else "raw stem (run mix for post-fader figures)"
             report["stems"][name] = m
             warnings_ += check_targets(spec, name, m, False)
         elif stem:
@@ -200,15 +248,11 @@ def analyse(spec: Spec, section: str | None = None, stem: str | None = None) -> 
             m = analyse_file(wav)
             report[label] = m
             warnings_ += check_targets(spec, label, m, label == "master")
-    # Masking hint: stems with most of their energy in the same band.
-    dom = {}
-    for name, m in report["stems"].items():
-        if not m.get("silent"):
-            dom.setdefault(max(m["bands_db"], key=m["bands_db"].get), []).append(name)
-    report["dominant_band_by_stem"] = {k: v for k, v in dom.items()}
-    for band, parts in dom.items():
-        if len(parts) > 1 and band in ("low", "low_mid"):
-            warnings_.append(f"possible masking: {parts} all peak in the {band} band")
+    report["masking"] = masking_pairs(report["stems"])
+    for mk in report["masking"]:
+        warnings_.append(f"possible masking: {mk['stems'][0]} and {mk['stems'][1]} are both "
+                         f"strong in the {mk['octave_hz']} Hz octave "
+                         f"({mk['level_diff_db']} dB apart)")
     report["warnings"] = warnings_
     if not stem:
         root.mkdir(parents=True, exist_ok=True)

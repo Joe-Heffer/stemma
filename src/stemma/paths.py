@@ -38,3 +38,8 @@ def render_root(track: Path, section: str | None = None) -> Path:
 
 def stems_dir(track: Path, section: str | None = None) -> Path:
     return render_root(track, section) / "stems"
+
+
+def post_mix_dir(track: Path, section: str | None = None) -> Path:
+    """Per-part audio after part fx, gain and pan: what each part adds to the mix."""
+    return render_root(track, section) / "post-mix"

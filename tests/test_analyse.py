@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from stemma.analyse import analyse_audio, keys_compatible
+from stemma.analyse import analyse_audio, keys_compatible, masking_pairs
 
 SR = 48000
 
@@ -93,3 +93,22 @@ def test_keys_compatible():
     assert keys_compatible("C major", "A minor")
     assert keys_compatible("A major", "A minor")
     assert not keys_compatible("G major", "A minor")
+
+
+def test_masking_pairs_flags_same_octave_similar_level():
+    low_a = analyse_audio(sine(110, -12), SR, full=False)
+    low_b = analyse_audio(sine(120, -14), SR, full=False)
+    high = analyse_audio(sine(2000, -12), SR, full=False)
+    quiet = analyse_audio(sine(115, -40), SR, full=False)
+    pairs = masking_pairs({"a": low_a, "b": low_b, "hi": high, "quiet": quiet})
+    assert [p["stems"] for p in pairs] == [["a", "b"]]
+    assert pairs[0]["octave_hz"] == "125"
+
+
+def test_width_above_300hz_ignores_mono_bass():
+    bass = sine(55, -6)
+    hi = sine(1000, -30)
+    x = np.stack([bass + hi, bass - hi], axis=1)
+    m = analyse_audio(x, SR, full=False)
+    assert m["stereo_width"] < 0.01
+    assert m["stereo_width_above_300hz"] > 0.95
