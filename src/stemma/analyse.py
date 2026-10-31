@@ -11,6 +11,7 @@ import soundfile as sf
 
 from . import dsp
 from .errors import StemmaError
+from .loudness import loudness_stats
 from .paths import post_mix_dir, render_root, stems_dir
 from .spec import Spec, is_audio_part
 from .theory import NAMES_SHARP
@@ -28,6 +29,8 @@ MAJOR = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.
 MINOR = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17])
 
 CLIP_LEVEL = 0.999  # |sample| at or above this counts as clipped
+LOW_END_HZ = 150  # low_end_correlation is measured below this
+LOW_END_MIN_CORR = 0.8  # warn on mix and master below this
 
 
 def _r(x, nd=2):
@@ -127,14 +130,20 @@ def stereo_image(x: np.ndarray, sr: int) -> dict:
     above-300 Hz figure is the better guide to how wide a mix feels.
     """
     if x.shape[1] < 2:
-        return {"stereo_width": 0.0, "stereo_width_above_300hz": 0.0, "correlation": 1.0}
+        return {"stereo_width": 0.0, "stereo_width_above_300hz": 0.0, "correlation": 1.0,
+                "low_end_correlation": 1.0}
     left, right = x[:, 0], x[:, 1]
     hi = dsp.filt(dsp.filt(x[:, :2], "highpass", 300, sr), "highpass", 300, sr)
-    denom = np.sqrt(np.sum(left**2) * np.sum(right**2))
-    corr = np.sum(left * right) / denom if denom > 0 else 1.0
+    lo = dsp.filt(dsp.filt(x[:, :2], "lowpass", LOW_END_HZ, sr), "lowpass", LOW_END_HZ, sr)
     return {"stereo_width": _r(_width(left, right), 3),
             "stereo_width_above_300hz": _r(_width(hi[:, 0], hi[:, 1]), 3),
-            "correlation": _r(corr, 3)}
+            "correlation": _r(_corr(left, right), 3),
+            "low_end_correlation": _r(_corr(lo[:, 0], lo[:, 1]), 3)}
+
+
+def _corr(left: np.ndarray, right: np.ndarray) -> float:
+    denom = np.sqrt(np.sum(left**2) * np.sum(right**2))
+    return float(np.sum(left * right) / denom) if denom > 1e-12 else 1.0
 
 
 def analyse_audio(x: np.ndarray, sr: int, full: bool = True) -> dict:
@@ -164,6 +173,9 @@ def analyse_audio(x: np.ndarray, sr: int, full: bool = True) -> dict:
     if silent:
         out["silent"] = True
         return out
+    out.update(loudness_stats(x, sr))
+    out["plr_db"] = (None if out["lufs_integrated"] is None
+                     else _r(out["true_peak_dbtp"] - out["lufs_integrated"]))
     out.update(band_energy(mono, sr))
     if full:
         out["tempo_bpm"] = estimate_tempo(mono, sr)
@@ -194,6 +206,10 @@ def check_targets(spec: Spec, name: str, m: dict, is_master: bool) -> list[str]:
         return [f"{name}: silent"]
     if m["clipped_samples"]:
         warn.append(f"{name}: {m['clipped_samples']} clipped samples")
+    if name in ("mix", "master") and (m.get("low_end_correlation") or 1) < LOW_END_MIN_CORR:
+        warn.append(f"{name}: low-end correlation {m['low_end_correlation']} below "
+                    f"{LOW_END_MIN_CORR} (stereo under {LOW_END_HZ} Hz); centre the bass "
+                    "and kick, or add stereo_width with mono_below_hz")
     if is_master:
         tgt = spec.master
         if m["lufs_integrated"] is not None and abs(m["lufs_integrated"] - tgt["lufs"]) > 1:
@@ -211,7 +227,8 @@ def check_targets(spec: Spec, name: str, m: dict, is_master: bool) -> list[str]:
         if m["correlation"] is not None and m["correlation"] < 0:
             warn.append(f"{name}: negative L/R correlation, mono collapse risk")
         t = spec.targets
-        for key in ("stereo_width", "stereo_width_above_300hz", "crest_factor_db"):
+        for key in ("stereo_width", "stereo_width_above_300hz", "crest_factor_db",
+                    "loudness_range_lu", "plr_db"):
             if key in t and m.get(key) is not None and not t[key][0] <= m[key] <= t[key][1]:
                 warn.append(f"{name}: {key} {m[key]} outside {t[key]}")
         for band, rng in t.get("bands", {}).items():
@@ -285,11 +302,21 @@ def analyse(spec: Spec, section: str | None = None, stem: str | None = None) -> 
             break
         wav = root / f"{label}.wav"
         if wav.is_file():
-            m = analyse_file(wav)
+            x, sr = sf.read(str(wav), dtype="float64", always_2d=True)
+            m = analyse_audio(x, sr)
             if tonal:
                 m.update(tonal)
+            if label == "master":
+                mj = root / "master.json"
+                if mj.is_file():
+                    mreport = json.loads(mj.read_text())
+                    if "limiter" in mreport:
+                        m["limiter"] = mreport["limiter"]
+                    warnings_ += mreport.get("warnings", [])
             report[label] = m
             warnings_ += check_targets(spec, label, m, label == "master")
+            if not section:
+                report["sections"] = section_figures(spec, x, sr)
     report["masking"] = masking_pairs(report["stems"])
     for mk in report["masking"]:
         warnings_.append(f"possible masking: {mk['stems'][0]} and {mk['stems'][1]} are both "
@@ -298,5 +325,88 @@ def analyse(spec: Spec, section: str | None = None, stem: str | None = None) -> 
     report["warnings"] = warnings_
     if not stem:
         root.mkdir(parents=True, exist_ok=True)
+        report["delta"] = _rotate_and_diff(root, report)
         (root / "analysis.json").write_text(json.dumps(report, indent=2) + "\n")
     return report
+
+
+SECTION_FIELDS = ("lufs_integrated", "short_term_lufs_max", "crest_factor_db",
+                  "spectral_centroid_hz", "stereo_width_above_300hz")
+
+
+def section_figures(spec: Spec, x: np.ndarray, sr: int) -> dict:
+    """A few figures per section of a full render, to check how energy builds."""
+    out = {}
+    for sec in spec.sections:
+        s0, s1 = spec.section_span(sec.name)
+        m = analyse_audio(x[int(s0 * sr):int(s1 * sr)], sr, full=False)
+        out[sec.name] = {k: m.get(k) for k in SECTION_FIELDS}
+    return out
+
+
+# What `delta` compares: top-level numbers, plus these nested dicts.
+DELTA_NESTED = ("bands_db", "limiter")
+DELTA_STEM_FIELDS = ("lufs_integrated", "crest_factor_db", "spectral_centroid_hz",
+                     "stereo_width_above_300hz", "bands_db")
+DELTA_MIN = 0.1
+
+
+def _numbers(m: dict, fields=None) -> dict:
+    out = {}
+    for k, v in m.items():
+        if fields and k not in fields:
+            continue
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            out[k] = v
+        elif isinstance(v, dict) and k in DELTA_NESTED:
+            out.update({f"{k}.{kk}": vv for kk, vv in v.items()
+                        if isinstance(vv, (int, float)) and not isinstance(vv, bool)})
+    return out
+
+
+def _measurements(report: dict) -> dict:
+    """Flat {path: number} of the figures worth comparing between revisions."""
+    flat = {}
+    for label in ("mix", "master"):
+        for k, v in _numbers(report.get(label, {})).items():
+            flat[f"{label}.{k}"] = v
+    for sec, m in report.get("sections", {}).items():
+        for k, v in _numbers(m).items():
+            flat[f"sections.{sec}.{k}"] = v
+    for name, m in report.get("stems", {}).items():
+        for k, v in _numbers(m, DELTA_STEM_FIELDS).items():
+            flat[f"stems.{name}.{k}"] = v
+    return flat
+
+
+def diff_reports(old: dict, new: dict) -> dict:
+    """Changes between two analysis reports: figures that moved and warnings."""
+    a, b = _measurements(old), _measurements(new)
+    changed = {}
+    for k in sorted(set(a) & set(b)):
+        d = b[k] - a[k]
+        if abs(d) >= DELTA_MIN:
+            changed[k] = {"old": a[k], "new": b[k], "diff": round(d, 3)}
+    ow, nw = set(old.get("warnings", [])), set(new.get("warnings", []))
+    return {"changed": changed,
+            "warnings_added": sorted(nw - ow), "warnings_removed": sorted(ow - nw)}
+
+
+def _rotate_and_diff(root: Path, report: dict) -> dict | None:
+    """Compare with the last analysis whose figures differed from this one.
+
+    ``analysis.json`` moves to ``analysis.prev.json`` only when the figures
+    changed, so re-running analyse without a change keeps showing what the
+    last change did.
+    """
+    cur, prev = root / "analysis.json", root / "analysis.prev.json"
+    old = json.loads(cur.read_text()) if cur.is_file() else None
+    if old is not None and _measurements(old) != _measurements(report):
+        prev.write_text(json.dumps({k: v for k, v in old.items() if k != "delta"},
+                                   indent=2) + "\n")
+        base = old
+    elif prev.is_file():
+        base = json.loads(prev.read_text())
+    else:
+        return None
+    return diff_reports(base, report)

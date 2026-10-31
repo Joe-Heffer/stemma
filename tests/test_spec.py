@@ -1,4 +1,5 @@
 import copy
+from pathlib import Path
 
 import pytest
 
@@ -59,3 +60,12 @@ def test_load_reports_validation_errors(tmp_path):
     (tmp_path / "track.yaml").write_text("title: x\n")
     with pytest.raises(StemmaError, match="failed validation"):
         load(tmp_path)
+
+
+def test_every_effect_is_documented():
+    from stemma.spec import schema
+
+    doc = (Path(__file__).parent.parent / "docs/mixing.md").read_text()
+    types = schema()["$defs"]["fx"]["properties"]["type"]["enum"]
+    missing = [t for t in types if f"| `{t}` |" not in doc]
+    assert not missing, f"add {missing} to docs/mixing.md"

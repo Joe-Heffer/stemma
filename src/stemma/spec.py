@@ -21,6 +21,9 @@ DEFAULT_MASTER = {
     "bit_depth": 24,
     "tail_seconds": 2.0,
     "fade_out_seconds": 0.5,
+    "fx": [],
+    "normalise": True,
+    "limiter": {},
 }
 
 DEFAULT_SCORE = {"grid": 16, "formats": ["musicxml", "ly", "pdf"]}
@@ -62,6 +65,14 @@ def validate(data: Any) -> list[str]:
         for send in mix.get("sends", {}):
             if send not in buses - {"master"}:
                 errors.append(f"$.parts[{i}].mix.sends: unknown bus {send!r}")
+        sc = mix.get("sidechain")
+        if sc:
+            names = {p["name"] for p in data["parts"]}
+            if sc["source"] == part["name"]:
+                errors.append(f"$.parts[{i}].mix.sidechain.source: a part cannot duck itself")
+            elif sc["source"] not in names:
+                errors.append(f"$.parts[{i}].mix.sidechain.source: unknown part "
+                              f"{sc['source']!r}")
         if part["source"] in ("sfizz", "csound", "faust") and "path" not in part.get("sound", {}):
             errors.append(f"$.parts[{i}].sound.path: required for source {part['source']!r}")
         if part["source"] == "elevenlabs":
@@ -71,6 +82,22 @@ def validate(data: Any) -> list[str]:
                 if k in part:
                     errors.append(f"$.parts[{i}].{k}: not used by source 'elevenlabs', "
                                   "which generates audio from sound.prompt")
+    sections = {s["name"] for s in data["sections"]}
+    parts = {p["name"] for p in data["parts"]}
+    seen = set()
+    for i, a in enumerate(data.get("automation", [])):
+        where = f"$.automation[{i}]"
+        if ("part" in a) == ("bus" in a):
+            errors.append(f"{where}: give exactly one of part or bus")
+            continue
+        kind, name = ("part", a["part"]) if "part" in a else ("bus", a["bus"])
+        if name not in (parts if kind == "part" else buses - {"master"}):
+            errors.append(f"{where}.{kind}: unknown {kind} {name!r}")
+        if a["section"] not in sections:
+            errors.append(f"{where}.section: unknown section {a['section']!r}")
+        if (kind, name, a["section"]) in seen:
+            errors.append(f"{where}: {kind} {name!r} already automated in {a['section']!r}")
+        seen.add((kind, name, a["section"]))
     return errors
 
 
@@ -110,6 +137,7 @@ class Spec:
         self.buses = data.get("buses", [])
         self.score = {**DEFAULT_SCORE, **data.get("score", {})}
         self.targets = data.get("targets", {})
+        self.automation = data.get("automation", [])
         self.parts = data["parts"]
         bar = 0
         self.sections: list[Section] = []

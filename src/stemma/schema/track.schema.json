@@ -59,6 +59,23 @@
         }
       }
     },
+    "automation": {
+      "type": "array",
+      "description": "Per-section level changes for a part or bus. Sections without an entry stay at 0 dB; the last section's level holds through the tail.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["section"],
+        "properties": {
+          "part": {"$ref": "#/$defs/identifier"},
+          "bus": {"$ref": "#/$defs/identifier"},
+          "section": {"$ref": "#/$defs/identifier"},
+          "gain_db": {"type": "number", "minimum": -60, "maximum": 12, "default": 0, "description": "Level relative to the fader for this section."},
+          "mute": {"type": "boolean", "default": false},
+          "ramp_beats": {"type": "number", "minimum": 0, "default": 0, "description": "Beats, from the section start, taken to reach this level from the previous section's."}
+        }
+      }
+    },
     "mix": {
       "type": "object",
       "additionalProperties": false,
@@ -75,7 +92,17 @@
       "properties": {
         "lufs": {"type": "number", "maximum": 0, "default": -14},
         "true_peak": {"type": "number", "maximum": 0, "default": -1},
-        "formats": {"type": "array", "items": {"enum": ["wav", "flac"]}, "uniqueItems": true, "default": ["wav", "flac"]},
+        "formats": {"type": "array", "items": {"enum": ["wav", "flac", "mp3", "ogg"]}, "uniqueItems": true, "default": ["wav", "flac"], "description": "mp3 and ogg need a libsndfile built with them (the soundfile wheels are)."},
+        "fx": {"$ref": "#/$defs/fx_chain", "description": "Mastering chain, applied to the mixdown before loudness normalisation and the limiter."},
+        "normalise": {"type": "boolean", "default": true, "description": "Gain to the lufs target. false keeps the mix level and only limits."},
+        "limiter": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "release_ms": {"type": "number", "exclusiveMinimum": 0, "default": 60},
+            "lookahead_ms": {"type": "number", "exclusiveMinimum": 0, "maximum": 20, "default": 4}
+          }
+        },
         "bit_depth": {"enum": [16, 24], "default": 24},
         "tail_seconds": {"type": "number", "minimum": 0, "default": 2, "description": "Silence after the last bar for reverb and release tails."},
         "fade_out_seconds": {"type": "number", "minimum": 0, "default": 0.5}
@@ -98,6 +125,8 @@
         "stereo_width": {"$ref": "#/$defs/range"},
         "stereo_width_above_300hz": {"$ref": "#/$defs/range"},
         "crest_factor_db": {"$ref": "#/$defs/range"},
+        "loudness_range_lu": {"$ref": "#/$defs/range"},
+        "plr_db": {"$ref": "#/$defs/range"},
         "bands": {
           "type": "object",
           "additionalProperties": false,
@@ -164,7 +193,22 @@
             "sends": {"type": "object", "additionalProperties": {"type": "number"}, "description": "Bus name to send level in dB (post-fader)."},
             "mute": {"type": "boolean", "default": false},
             "solo": {"type": "boolean", "default": false},
-            "fx": {"$ref": "#/$defs/fx_chain"}
+            "fx": {"$ref": "#/$defs/fx_chain"},
+            "sidechain": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["source"],
+              "description": "Duck this part while another part's raw stem is loud (e.g. bass under the kick). Applied after fx, before the fader.",
+              "properties": {
+                "source": {"$ref": "#/$defs/identifier", "description": "The part whose stem triggers the ducking."},
+                "depth_db": {"type": "number", "exclusiveMinimum": 0, "maximum": 40, "default": 6, "description": "Most the part is turned down."},
+                "threshold_db": {"type": "number", "maximum": 0, "default": -30},
+                "ratio": {"type": "number", "minimum": 1, "default": 4},
+                "attack_ms": {"type": "number", "exclusiveMinimum": 0, "default": 5},
+                "release_ms": {"type": "number", "exclusiveMinimum": 0, "default": 150},
+                "filter_hz": {"$ref": "#/$defs/freq", "description": "Lowpass the trigger first, e.g. 120 so only the kick of a drum stem ducks."}
+              }
+            }
           }
         },
         "score": {
@@ -186,7 +230,7 @@
       "type": "object",
       "required": ["type"],
       "properties": {
-        "type": {"enum": ["gain", "highpass", "lowpass", "peak", "lowshelf", "highshelf", "compressor", "limiter", "reverb", "delay", "distortion", "chorus"]},
+        "type": {"enum": ["gain", "highpass", "lowpass", "peak", "lowshelf", "highshelf", "compressor", "limiter", "reverb", "delay", "distortion", "chorus", "gate", "transient", "stereo_width", "mid_side_eq", "convolution"]},
         "bypass": {"type": "boolean"}
       },
       "allOf": [
@@ -198,8 +242,18 @@
         {"if": {"properties": {"type": {"const": "delay"}}}, "then": {"properties": {"beats": {"type": "number", "exclusiveMinimum": 0}, "seconds": {"type": "number", "exclusiveMinimum": 0}, "feedback": {"type": "number", "minimum": 0, "maximum": 0.95}, "mix": {"$ref": "#/$defs/unit"}}}},
         {"if": {"properties": {"type": {"const": "distortion"}}}, "then": {"properties": {"drive_db": {"type": "number", "minimum": 0}}}},
         {"if": {"properties": {"type": {"const": "chorus"}}}, "then": {"properties": {"rate_hz": {"type": "number"}, "depth": {"$ref": "#/$defs/unit"}, "mix": {"$ref": "#/$defs/unit"}}}},
-        {"if": {"properties": {"type": {"const": "limiter"}}}, "then": {"properties": {"threshold_db": {"type": "number", "maximum": 0}, "release_ms": {"type": "number"}}}}
+        {"if": {"properties": {"type": {"const": "limiter"}}}, "then": {"properties": {"threshold_db": {"type": "number", "maximum": 0}, "release_ms": {"type": "number"}}}},
+        {"if": {"properties": {"type": {"const": "gate"}}}, "then": {"properties": {"threshold_db": {"type": "number", "maximum": 0}, "ratio": {"type": "number", "minimum": 1}, "attack_ms": {"type": "number", "exclusiveMinimum": 0}, "release_ms": {"type": "number", "exclusiveMinimum": 0}, "hold_ms": {"type": "number", "minimum": 0}, "range_db": {"type": "number", "minimum": 0}}}},
+        {"if": {"properties": {"type": {"const": "transient"}}}, "then": {"properties": {"attack_db": {"type": "number", "minimum": -24, "maximum": 24}, "sustain_db": {"type": "number", "minimum": -24, "maximum": 24}}}},
+        {"if": {"properties": {"type": {"const": "stereo_width"}}}, "then": {"properties": {"width": {"type": "number", "minimum": 0, "maximum": 2}, "mono_below_hz": {"type": "number", "minimum": 20, "maximum": 500}}}},
+        {"if": {"properties": {"type": {"const": "mid_side_eq"}}}, "then": {"properties": {"mid": {"$ref": "#/$defs/ms_chain"}, "side": {"$ref": "#/$defs/ms_chain"}}}},
+        {"if": {"properties": {"type": {"const": "convolution"}}}, "then": {"properties": {"ir": {"type": "string", "description": "Impulse response WAV or FLAC, relative to the track folder or sounds/. Must be freely licensed and listed in sounds/LICENCES.md."}, "mix": {"$ref": "#/$defs/unit"}, "predelay_ms": {"type": "number", "minimum": 0, "maximum": 500}}, "required": ["ir"]}}
       ]
+    },
+    "ms_chain": {
+      "type": "array",
+      "description": "EQ effects for the mid or side signal.",
+      "items": {"allOf": [{"$ref": "#/$defs/fx"}, {"properties": {"type": {"enum": ["gain", "highpass", "lowpass", "peak", "lowshelf", "highshelf"]}}}]}
     },
     "freq": {"type": "number", "minimum": 10, "maximum": 24000},
     "unit": {"type": "number", "minimum": 0, "maximum": 1}

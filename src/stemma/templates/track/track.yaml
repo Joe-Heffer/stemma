@@ -23,8 +23,19 @@ parts:
     source: builtin
     generator: parts/bass.py
     sound: {preset: saw-bass}
-    mix: {gain_db: -4, fx: [{type: highpass, cutoff_hz: 35}]}
+    mix:
+      gain_db: -4
+      fx: [{type: highpass, cutoff_hz: 35}]
+      # Duck under the kick: see docs/mixing.md.
+      # sidechain: {source: drums, filter_hz: 120, threshold_db: -16, depth_db: 4}
+
+# Per-section levels for parts or buses.
+# automation:
+#   - {part: bass, section: a, gain_db: -3, ramp_beats: 4}
 
 master:
   lufs: -14
   true_peak: -1
+  # Mastering chain before the limiter; master.json reports limiter gain reduction.
+  # fx:
+  #   - {type: stereo_width, mono_below_hz: 120}
