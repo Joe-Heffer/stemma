@@ -10,6 +10,23 @@ Run everything through `uv run stemma …` (or `make … TRACK=<slug>`). Every
 command prints JSON. Run `uv run stemma doctor` once per session to see which
 renderers exist.
 
+## Skills
+
+Task-shaped procedures live in `.claude/skills/`. Load the one that fits:
+
+* `stemma-new-track`: brief, spec and parts to a first full render.
+* `stemma-write-part`: writing or revising a part generator (`ctx` API,
+  presets, GM drum map in its `reference.md`).
+* `stemma-mix-revision`: one analysis-driven mix change, checked with `delta`.
+* `stemma-master`: loudness target, limiter and final checks.
+* `stemma-revision-log`: pre-commit checks, the revision log row and the
+  commit message.
+* `stemma-generated-parts`: ElevenLabs parts, credits, alignment.
+* `stemma-add-sound`: soundfonts, SFZ, IRs and patches, with licences.
+
+`tests/test_skills.py` checks that every command and option a skill names
+exists. Update the skills when you change the CLI.
+
 ## The loop
 
 1. **Brief.** Write or read the brief in `notes.md`: purpose, mood, length,
