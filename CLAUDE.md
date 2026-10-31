@@ -14,6 +14,10 @@ renderers exist.
 
 1. **Brief.** Write or read the brief in `notes.md`: purpose, mood, length,
    references described in words, and any hard constraints.
+   Optionally, run `stemma reference <slug>` once (needs
+   `ELEVENLABS_API_KEY`; it costs credits, so do not re-run it with
+   `--force` without reason). Record the prompt and the reference’s
+   `bands_db`, centroid and crest factor in `notes.md`.
 2. **Spec.** Set tempo, key, metre and sections in `track.yaml`. Run
    `stemma validate <slug>` and check the section map and duration.
 3. **Parts.** Write one generator per part. Run `stemma midi <slug> --part P`
@@ -49,6 +53,8 @@ will not know which change helped.
 * Score output in `renders/score/` is build output too: do not commit it.
 * Keep generators deterministic: use `ctx.rng` (seeded from `seed` in the
   spec), never `random` or the clock.
+* Never commit, sample, mix or render reference audio into a part. It lives
+  in `renders/reference/` only, as something to measure against.
 * Ask before adding Python dependencies or system packages.
 * Write docs and notes in British English.
 
@@ -73,6 +79,13 @@ will not know which change helped.
 Stem figures are measured post-fader (after part fx, gain and pan, from
 `renders/post-mix/`) once `mix` has run, so they show what each part
 contributes. `measured` says which version was used.
+
+`stemma reference` reports `compare`: master minus reference for each band,
+the centroid, width above 300 Hz, crest factor and tempo. Read it as a
+direction to move in, not a target to hit: a generated reference has its own
+arrangement. Its `warnings` flag bands more than 3 dB apart, a centroid more
+than 25% away, and a reference whose tempo or key does not match the spec
+(the key estimate includes drums, so treat that one as a hint).
 
 The analysis is a proxy for listening, not a replacement. Use it to catch
 problems and to confirm that a change did what you intended.

@@ -70,6 +70,7 @@ All commands take a track slug (a folder under `tracks/`) and print JSON on stdo
 | `stemma analyse <slug> [--section S] [--stem P]` | Measurements per stem, mix and master, plus warnings |
 | `stemma analyse --file X.wav` | Analyse any audio file |
 | `stemma score <slug> [--part P] [--section S] [--format …]` | Sheet music in `renders/score/`: MusicXML, LilyPond and PDF |
+| `stemma reference <slug> [--prompt T] [--seconds N] [--file X]` | Generate a reference track from the brief (ElevenLabs) or load one, and compare the master with it |
 | `stemma all <slug> [--section S]` | The whole chain |
 | `stemma doctor` | Which external tools, soundfonts and engines are available |
 | `stemma sounds list` / `fetch [NAME]` | Shared sounds from `sounds/manifest.yaml` |
@@ -78,6 +79,37 @@ All commands take a track slug (a folder under `tracks/`) and print JSON on stdo
 `renders/sections/<name>/`, which keeps iteration fast.
 
 The Makefile wraps these: `make render TRACK=example-sketch ARGS="--part lead"`.
+
+## Reference tracks (optional)
+
+A brief describes its references in words, which cannot be measured.
+`stemma reference <slug>` sends a prompt built from `track.yaml` (title, tempo,
+key, metre, section names and descriptions) and the `## Brief` section of
+`notes.md` to the [ElevenLabs Music API](https://elevenlabs.io/docs/api-reference/music/compose),
+analyses the instrumental it returns, and, once `renders/master.wav` exists,
+compares the master with it: per-band balance, spectral centroid, width above
+300 Hz, crest factor and tempo. Loudness is left out because both are
+normalised.
+
+```sh
+export ELEVENLABS_API_KEY=...                 # from your ElevenLabs account
+uv run stemma reference night-drive           # generate (or reuse) and compare
+uv run stemma reference night-drive --prompt "Slow, warm synthwave, analogue pads, 90 bpm"
+uv run stemma reference night-drive --file ~/refs/some-track.flac   # no API call
+```
+
+* The reference is a measuring stick, not material. It is written to
+  `renders/reference/` (gitignored) and is never mixed, sampled or rendered
+  into a part, so tracks still build offline and deterministically without it.
+* Generation costs ElevenLabs credits (roughly 900 per minute of audio at the
+  time of writing), so keep references short with `--seconds`. Requests are
+  cached by their content: running the same request again reuses the file
+  unless you pass `--force`.
+* The generated audio is governed by ElevenLabs’ terms for your plan, not by
+  this repository’s licence.
+* The request is `POST /v1/music` with `prompt`, `music_length_ms`, `model_id`
+  and `force_instrumental`. If ElevenLabs changes its API, adjust the
+  constants at the top of `src/stemma/reference.py`.
 
 ## Repository layout
 

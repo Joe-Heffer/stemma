@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sys
 import time
@@ -96,6 +97,13 @@ def cmd_analyse(a) -> None:
     _print(analyse(_spec(a.slug), a.section, a.stem))
 
 
+def cmd_reference(a) -> None:
+    from .reference import reference
+
+    _print(reference(_spec(a.slug), a.prompt, a.seconds, a.model, a.force,
+                     Path(a.file) if a.file else None))
+
+
 def cmd_all(a) -> None:
     from .analyse import analyse
     from .master import master
@@ -137,7 +145,9 @@ def cmd_doctor(a) -> None:
         except StemmaError:
             found[name] = None
     _print({"stemma": __version__, "root": str(repo_root()), "tools": tools,
-            "pedalboard": pedalboard_available(), "music21": version("music21"),
+            "pedalboard": pedalboard_available(),
+            "elevenlabs_api_key": bool(os.environ.get("ELEVENLABS_API_KEY")),
+            "music21": version("music21"),
             "sounds": found})
 
 
@@ -187,6 +197,13 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--stem", help="analyse one stem only")
     s.add_argument("--file", help="analyse any audio file")
     s.set_defaults(func=cmd_analyse)
+    s = add("reference", cmd_reference,
+            "generate a reference track from the brief and compare the master with it")
+    s.add_argument("--prompt", help="override the prompt built from the spec and brief")
+    s.add_argument("--seconds", type=float, help="length (default: the spec duration)")
+    s.add_argument("--model", help="ElevenLabs model id (default music_v1)")
+    s.add_argument("--force", action="store_true", help="call the API even if cached")
+    s.add_argument("--file", help="compare with this audio file instead of generating")
     s = add("all", cmd_all, "midi, render, mix, master and analyse")
     s.add_argument("--section")
     s.add_argument("--force", action="store_true")
