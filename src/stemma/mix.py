@@ -53,7 +53,8 @@ def mix(spec: Spec, section: str | None = None) -> dict:
             raise StemmaError(f"stem {wav} missing; run `stemma render {spec.slug}"
                               + (f" --section {section}" if section else "") + "`")
         x = _fit(load_stem(wav, sr), n)
-        x = apply_chain(x, m.get("fx", []), sr, tempo, engine)
+        meter: list = []
+        x = apply_chain(x, m.get("fx", []), sr, tempo, engine, spec.resolve, meter)
         x = x * dsp.db_to_amp(m.get("gain_db", 0))
         x = _fit(dsp.pan_stereo(x, m.get("pan", 0), m.get("width", 1)), n)
         # Post-fader stem, as heard in the mix, for analysis.
@@ -62,15 +63,25 @@ def mix(spec: Spec, section: str | None = None) -> dict:
         (main if dest == "master" else buses[dest])[:] += x
         for bus, level in m.get("sends", {}).items():
             buses[bus] += x * dsp.db_to_amp(level)
-        report["parts"].append({"part": name, "status": "mixed", "bus": dest,
-                                "peak_dbfs": round(dsp.amp_to_db(np.abs(x).max()), 2)})
+        entry = {"part": name, "status": "mixed", "bus": dest,
+                 "peak_dbfs": round(dsp.amp_to_db(np.abs(x).max()), 2)}
+        if meter:
+            entry["dynamics"] = meter
+        report["parts"].append(entry)
     for b in spec.buses:
-        x = apply_chain(buses[b["name"]], b.get("fx", []), sr, tempo, engine)
+        meter = []
+        x = apply_chain(buses[b["name"]], b.get("fx", []), sr, tempo, engine, spec.resolve,
+                        meter)
         x = _fit(dsp.pan_stereo(x, b.get("pan", 0)) if b.get("pan") else x, n)
         main += x * dsp.db_to_amp(b.get("gain_db", 0))
-        report["buses"].append({"bus": b["name"],
-                                "peak_dbfs": round(dsp.amp_to_db(np.abs(x).max()), 2)})
-    main = apply_chain(main, spec.mix.get("fx", []), sr, tempo, engine)
+        entry = {"bus": b["name"], "peak_dbfs": round(dsp.amp_to_db(np.abs(x).max()), 2)}
+        if meter:
+            entry["dynamics"] = meter
+        report["buses"].append(entry)
+    meter = []
+    main = apply_chain(main, spec.mix.get("fx", []), sr, tempo, engine, spec.resolve, meter)
+    if meter:
+        report["mix_bus_dynamics"] = meter
     main = _fit(main * dsp.db_to_amp(spec.mix.get("gain_db", 0)), n)
     if main.shape[1] == 1:
         main = np.repeat(main, 2, axis=1)

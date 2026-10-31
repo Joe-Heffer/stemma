@@ -186,7 +186,7 @@
       "type": "object",
       "required": ["type"],
       "properties": {
-        "type": {"enum": ["gain", "highpass", "lowpass", "peak", "lowshelf", "highshelf", "compressor", "limiter", "reverb", "delay", "distortion", "chorus"]},
+        "type": {"enum": ["gain", "highpass", "lowpass", "peak", "lowshelf", "highshelf", "compressor", "limiter", "reverb", "delay", "distortion", "chorus", "gate", "transient", "stereo_width", "mid_side_eq", "convolution"]},
         "bypass": {"type": "boolean"}
       },
       "allOf": [
@@ -198,8 +198,18 @@
         {"if": {"properties": {"type": {"const": "delay"}}}, "then": {"properties": {"beats": {"type": "number", "exclusiveMinimum": 0}, "seconds": {"type": "number", "exclusiveMinimum": 0}, "feedback": {"type": "number", "minimum": 0, "maximum": 0.95}, "mix": {"$ref": "#/$defs/unit"}}}},
         {"if": {"properties": {"type": {"const": "distortion"}}}, "then": {"properties": {"drive_db": {"type": "number", "minimum": 0}}}},
         {"if": {"properties": {"type": {"const": "chorus"}}}, "then": {"properties": {"rate_hz": {"type": "number"}, "depth": {"$ref": "#/$defs/unit"}, "mix": {"$ref": "#/$defs/unit"}}}},
-        {"if": {"properties": {"type": {"const": "limiter"}}}, "then": {"properties": {"threshold_db": {"type": "number", "maximum": 0}, "release_ms": {"type": "number"}}}}
+        {"if": {"properties": {"type": {"const": "limiter"}}}, "then": {"properties": {"threshold_db": {"type": "number", "maximum": 0}, "release_ms": {"type": "number"}}}},
+        {"if": {"properties": {"type": {"const": "gate"}}}, "then": {"properties": {"threshold_db": {"type": "number", "maximum": 0}, "ratio": {"type": "number", "minimum": 1}, "attack_ms": {"type": "number", "exclusiveMinimum": 0}, "release_ms": {"type": "number", "exclusiveMinimum": 0}, "hold_ms": {"type": "number", "minimum": 0}, "range_db": {"type": "number", "minimum": 0}}}},
+        {"if": {"properties": {"type": {"const": "transient"}}}, "then": {"properties": {"attack_db": {"type": "number", "minimum": -24, "maximum": 24}, "sustain_db": {"type": "number", "minimum": -24, "maximum": 24}}}},
+        {"if": {"properties": {"type": {"const": "stereo_width"}}}, "then": {"properties": {"width": {"type": "number", "minimum": 0, "maximum": 2}, "mono_below_hz": {"type": "number", "minimum": 20, "maximum": 500}}}},
+        {"if": {"properties": {"type": {"const": "mid_side_eq"}}}, "then": {"properties": {"mid": {"$ref": "#/$defs/ms_chain"}, "side": {"$ref": "#/$defs/ms_chain"}}}},
+        {"if": {"properties": {"type": {"const": "convolution"}}}, "then": {"properties": {"ir": {"type": "string", "description": "Impulse response WAV or FLAC, relative to the track folder or sounds/. Must be freely licensed and listed in sounds/LICENCES.md."}, "mix": {"$ref": "#/$defs/unit"}, "predelay_ms": {"type": "number", "minimum": 0, "maximum": 500}}, "required": ["ir"]}}
       ]
+    },
+    "ms_chain": {
+      "type": "array",
+      "description": "EQ effects for the mid or side signal.",
+      "items": {"allOf": [{"$ref": "#/$defs/fx"}, {"properties": {"type": {"enum": ["gain", "highpass", "lowpass", "peak", "lowshelf", "highshelf"]}}}]}
     },
     "freq": {"type": "number", "minimum": 10, "maximum": 24000},
     "unit": {"type": "number", "minimum": 0, "maximum": 1}
