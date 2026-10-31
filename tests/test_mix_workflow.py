@@ -69,3 +69,55 @@ def test_sidechain_ducks_bass_under_drums(demo, capsys):
     ducked = run(capsys, "analyse", "demo", "--stem", "bass")["stems"]["bass"]
     assert ducked["lufs_integrated"] < plain["lufs_integrated"] - 0.5
     assert before  # raw-stem analysis worked before any mix
+
+
+def test_automation_validation(example_spec_data):
+    d = example_spec_data
+    d["automation"] = [{"part": "lead", "section": "outro", "gain_db": -4, "ramp_beats": 2},
+                       {"bus": "verb", "section": "intro", "mute": True}]
+    assert validate(d) == []
+    d["automation"] = [{"part": "lead", "bus": "verb", "section": "outro"}]
+    assert any("exactly one" in e for e in validate(d))
+    d["automation"] = [{"part": "nope", "section": "outro"}, {"part": "lead", "section": "x"}]
+    errs = validate(d)
+    assert any("unknown part" in e for e in errs) and any("unknown section" in e for e in errs)
+    d["automation"] = [{"part": "lead", "section": "outro"}] * 2
+    assert any("already automated" in e for e in validate(d))
+
+
+def test_automation_curve(demo):
+    from stemma.mix import automation_curve
+    from stemma.spec import load
+
+    edit_spec(demo, lambda d: d.update(automation=[
+        {"part": "bass", "section": "b", "gain_db": -6, "ramp_beats": 2}]))
+    spec = load(demo / "tracks/demo")
+    n = int((spec.duration + spec.master["tail_seconds"]) * SR)
+    g = automation_curve(spec, "part", "bass", None, n)
+    b0 = int(spec.section_span("b")[0] * SR)
+    ramp = int(2 * spec.seconds_per_beat * SR)
+    assert g[b0 - 1] == 1.0
+    assert 20 * np.log10(g[b0 + ramp // 2]) == pytest.approx(-3, abs=0.1)
+    assert 20 * np.log10(g[b0 + ramp + 10]) == pytest.approx(-6, abs=1e-6)
+    assert g[-1] == pytest.approx(g[b0 + ramp + 10])  # the tail holds
+    # A section render is a slice of the same curve.
+    m = int((spec.section_span("b")[1] - spec.section_span("b")[0]) * SR)
+    gb = automation_curve(spec, "part", "bass", "b", m)
+    assert np.allclose(gb[:1000], g[b0:b0 + 1000])
+    assert automation_curve(spec, "part", "drums", None, n) is None
+
+
+def test_automation_mutes_a_section(demo, capsys):
+    edit_spec(demo, lambda d: d.update(automation=[
+        {"part": "bass", "section": "b", "mute": True}]))
+    report = run(capsys, "mix", "demo")
+    assert next(p for p in report["parts"] if p["part"] == "bass")["automation"] == ["b"]
+    import soundfile as sf
+
+    from stemma.spec import load
+
+    spec = load(demo / "tracks/demo")
+    x, sr = sf.read(str(demo / "tracks/demo/renders/post-mix/bass.wav"))
+    b0, b1 = (int(t * sr) for t in spec.section_span("b"))
+    assert np.abs(x[:b0]).max() > 0.01
+    assert np.abs(x[b0 + 100:b1]).max() == 0

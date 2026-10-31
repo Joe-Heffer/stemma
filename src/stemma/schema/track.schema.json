@@ -59,6 +59,23 @@
         }
       }
     },
+    "automation": {
+      "type": "array",
+      "description": "Per-section level changes for a part or bus. Sections without an entry stay at 0 dB; the last section's level holds through the tail.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["section"],
+        "properties": {
+          "part": {"$ref": "#/$defs/identifier"},
+          "bus": {"$ref": "#/$defs/identifier"},
+          "section": {"$ref": "#/$defs/identifier"},
+          "gain_db": {"type": "number", "minimum": -60, "maximum": 12, "default": 0, "description": "Level relative to the fader for this section."},
+          "mute": {"type": "boolean", "default": false},
+          "ramp_beats": {"type": "number", "minimum": 0, "default": 0, "description": "Beats, from the section start, taken to reach this level from the previous section's."}
+        }
+      }
+    },
     "mix": {
       "type": "object",
       "additionalProperties": false,

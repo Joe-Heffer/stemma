@@ -41,6 +41,40 @@ def _sidechain(spec: Spec, sc: dict | None, sdir, n: int) -> np.ndarray | None:
                          sc.get("filter_hz"))
 
 
+def automation_curve(spec: Spec, kind: str, name: str, section: str | None,
+                     n: int) -> np.ndarray | None:
+    """Per-sample linear gain from ``automation`` for one part or bus, or None.
+
+    Built on the whole-track timeline, then sliced, so a section render hears
+    the same levels as the full render.
+    """
+    entries = {a["section"]: a for a in spec.automation if a.get(kind) == name}
+    if not entries:
+        return None
+    sr = spec.sample_rate
+    total = int((spec.duration + spec.master["tail_seconds"]) * sr)
+    g = np.ones(max(total, 1))
+    prev = 1.0
+    for i, sec in enumerate(spec.sections):
+        a = entries.get(sec.name, {})
+        amp = 0.0 if a.get("mute") else dsp.db_to_amp(a.get("gain_db", 0))
+        s0, s1 = spec.section_span(sec.name)
+        i0 = int(s0 * sr)
+        i1 = total if i == len(spec.sections) - 1 else int(s1 * sr)
+        r = min(int(a.get("ramp_beats", 0) * spec.seconds_per_beat * sr), i1 - i0)
+        if r > 0:
+            if prev > 0 and amp > 0:  # linear in dB
+                ramp = np.geomspace(prev, amp, r)
+            else:
+                ramp = np.linspace(prev, amp, r)
+            g[i0:i0 + r] = ramp
+        g[i0 + r:i1] = amp
+        prev = amp
+    start = int(spec.section_span(section)[0] * sr)
+    g = g[start:start + n]
+    return np.pad(g, (0, n - len(g)), mode="edge") if len(g) < n else g
+
+
 def mix(spec: Spec, section: str | None = None) -> dict:
     sr, tempo = spec.sample_rate, spec.tempo
     engine = choose_engine(spec.mix.get("engine", "auto"))
@@ -75,6 +109,9 @@ def mix(spec: Spec, section: str | None = None) -> dict:
         if duck is not None:
             x = x * duck[:, None]
         x = x * dsp.db_to_amp(m.get("gain_db", 0))
+        auto = automation_curve(spec, "part", name, section, n)
+        if auto is not None:
+            x = x * auto[:, None]
         x = _fit(dsp.pan_stereo(x, m.get("pan", 0), m.get("width", 1)), n)
         # Post-fader stem, as heard in the mix, for analysis.
         sf.write(str(post / f"{name}.wav"), x.astype(np.float32), sr, subtype="FLOAT")
@@ -86,6 +123,9 @@ def mix(spec: Spec, section: str | None = None) -> dict:
                  "peak_dbfs": round(dsp.amp_to_db(np.abs(x).max()), 2)}
         if meter:
             entry["dynamics"] = meter
+        if auto is not None:
+            entry["automation"] = sorted({a["section"] for a in spec.automation
+                                          if a.get("part") == name})
         if duck is not None:
             duck_db = -20 * np.log10(np.maximum(duck, 1e-9))
             entry["sidechain"] = {"source": m["sidechain"]["source"],
@@ -101,6 +141,9 @@ def mix(spec: Spec, section: str | None = None) -> dict:
         x = apply_chain(buses[b["name"]], b.get("fx", []), sr, tempo, engine, spec.resolve,
                         meter)
         x = _fit(dsp.pan_stereo(x, b.get("pan", 0)) if b.get("pan") else x, n)
+        auto = automation_curve(spec, "bus", b["name"], section, n)
+        if auto is not None:
+            x = x * auto[:, None]
         main += x * dsp.db_to_amp(b.get("gain_db", 0))
         entry = {"bus": b["name"], "peak_dbfs": round(dsp.amp_to_db(np.abs(x).max()), 2)}
         if meter:
