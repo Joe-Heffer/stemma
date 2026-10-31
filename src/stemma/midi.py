@@ -11,7 +11,7 @@ import pretty_midi
 
 from .compose import Context
 from .errors import StemmaError
-from .spec import Spec
+from .spec import Spec, is_audio_part
 from .theory import note_name
 
 # An unused controller, written after the last note so renderers that stop at the
@@ -85,6 +85,10 @@ def build(spec: Spec, only: str | None = None) -> list[dict]:
     report = []
     for part in spec.parts:
         if only and part["name"] != only:
+            continue
+        if is_audio_part(part):
+            report.append({"part": part["name"], "origin": "audio", "source": part["source"],
+                           "note": "no MIDI: rendered from sound.prompt"})
             continue
         path = spec.midi_path(part)
         if "generator" in part:

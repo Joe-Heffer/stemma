@@ -17,7 +17,7 @@ from pathlib import Path
 from .errors import StemmaError
 from .midi import is_drum, read_notes
 from .paths import render_root
-from .spec import Spec
+from .spec import Spec, is_audio_part
 from .theory import note_name
 
 # GM drum number -> (display step, display octave, notehead, LilyPond drum name).
@@ -210,10 +210,14 @@ def build_score(spec: Spec, section: str | None = None, only: str | None = None)
     if spec.data.get("artist"):
         score.metadata.composer = spec.data["artist"]
 
+    audio_only = [p["name"] for p in spec.parts if is_audio_part(p)
+                  and (not only or p["name"] == only)]
     chosen = [p for p in spec.parts if (not only or p["name"] == only)
-              and p.get("score", {}).get("include", True)]
+              and p.get("score", {}).get("include", True) and not is_audio_part(p)]
     if only and not chosen:
-        spec.part(only)  # raises for an unknown part
+        part = spec.part(only)  # raises for an unknown part
+        if is_audio_part(part):
+            raise StemmaError(f"part {only!r} is generated audio and has no notes to score")
         raise StemmaError(f"part {only!r} has score.include set to false")
     if not chosen:
         raise StemmaError("no parts to score")
@@ -292,7 +296,10 @@ def build_score(spec: Spec, section: str | None = None, only: str | None = None)
         if not notes:
             warnings.append(f"{p['name']}: no notes in range; written as rests")
         parts_report.append(entry)
-    return score, {"parts": parts_report, "warnings": warnings}
+    report = {"parts": parts_report, "warnings": warnings}
+    if audio_only:
+        report["not_scored"] = {n: "generated audio, no notes" for n in audio_only}
+    return score, report
 
 
 # LilyPond ---------------------------------------------------------------------

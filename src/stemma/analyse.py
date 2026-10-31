@@ -12,7 +12,7 @@ import soundfile as sf
 from . import dsp
 from .errors import StemmaError
 from .paths import post_mix_dir, render_root, stems_dir
-from .spec import Spec
+from .spec import Spec, is_audio_part
 from .theory import NAMES_SHARP
 
 BANDS = {  # Hz, upper edge exclusive
@@ -240,6 +240,23 @@ def tonal_key(spec: Spec, post: Path) -> dict | None:
     return {"key_tonal": k["key"], "key_tonal_confidence": k["key_confidence"]}
 
 
+def tempo_matches(estimated: float, spec_tempo: float, tolerance: float = 0.04) -> bool:
+    """True when an estimate is within ``tolerance`` of the tempo, half or double it."""
+    ratio = estimated / spec_tempo
+    return min(abs(ratio - r) for r in (0.5, 1, 2)) <= tolerance
+
+
+def _generated_tempo(spec: Spec, name: str, wav: Path, m: dict) -> list[str]:
+    """Generated audio does not follow the grid by construction, so check its tempo."""
+    x, sr = sf.read(str(wav), dtype="float64", always_2d=True)
+    m["tempo_bpm"] = estimate_tempo(x.mean(axis=1), sr)
+    if m["tempo_bpm"] and not tempo_matches(m["tempo_bpm"], spec.tempo):
+        return [f"{name}: generated audio runs at about {m['tempo_bpm']} bpm, not "
+                f"{spec.tempo:g}; it will drift against the other parts "
+                "(regenerate, or reword sound.prompt)"]
+    return []
+
+
 def analyse(spec: Spec, section: str | None = None, stem: str | None = None) -> dict:
     root = render_root(spec.dir, section)
     sdir = stems_dir(spec.dir, section)
@@ -256,6 +273,8 @@ def analyse(spec: Spec, section: str | None = None, stem: str | None = None) -> 
             fresh = pm.is_file() and pm.stat().st_mtime >= wav.stat().st_mtime
             m = analyse_file(pm if fresh else wav, full=False)
             m["measured"] = "post-mix" if fresh else "raw stem (run mix for post-fader figures)"
+            if is_audio_part(spec.part(name)) and not m.get("silent"):
+                warnings_ += _generated_tempo(spec, name, wav, m)
             report["stems"][name] = m
             warnings_ += check_targets(spec, name, m, False)
         elif stem:
