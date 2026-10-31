@@ -1,0 +1,27 @@
+# Shared sounds. Large files are not committed: they are found in sounds/cache/
+# (filled by `stemma sounds fetch`) or in the listed system paths.
+# Every entry must record its licence. See sounds/LICENCES.md.
+sounds:
+  - name: FluidR3_GM
+    kind: sf2
+    file: FluidR3_GM.sf2
+    licence: MIT
+    author: Frank Wen and contributors
+    source: Debian/Ubuntu package fluid-soundfont-gm; Homebrew/Arch equivalents
+    system_paths:
+      - /usr/share/sounds/sf2/FluidR3_GM.sf2
+      - /usr/share/soundfonts/FluidR3_GM.sf2
+      - /usr/local/share/soundfonts/FluidR3_GM.sf2
+      - /opt/homebrew/share/soundfonts/FluidR3_GM.sf2
+      - ~/.local/share/soundfonts/FluidR3_GM.sf2
+
+  - name: FluidR3Mono_GM
+    kind: sf3
+    file: FluidR3Mono_GM.sf3
+    licence: MIT
+    author: Frank Wen; mono SF3 conversion by the MuseScore project
+    url: https://github.com/musescore/MuseScore/raw/v3.6.2/share/sound/FluidR3Mono_GM.sf3
+    notes: >-
+      Smaller (about 23 MB) Ogg-compressed alternative. Needs FluidSynth built
+      with libsndfile Ogg support. No checksum recorded yet: the first fetch
+      prints one to add here.
