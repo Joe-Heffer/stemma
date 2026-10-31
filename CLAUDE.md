@@ -22,6 +22,9 @@ renderers exist.
    `stemma validate <slug>` and check the section map and duration.
 3. **Parts.** Write one generator per part. Run `stemma midi <slug> --part P`
    and check the note count, pitch range and velocity range it reports.
+   A part with `source: elevenlabs` has no generator: its audio is generated
+   from `sound.prompt` (one instrument per part) when you render it. Its
+   revisions are prompt changes. See “Generated parts” below.
 4. **Render only what changed:** `stemma render <slug> --part P --section S`.
    Unchanged parts are cached, so a full render is cheap once stems exist.
 5. **Analyse:** `stemma analyse <slug> --section S` (or `--stem P`). Read the
@@ -53,8 +56,13 @@ will not know which change helped.
 * Score output in `renders/score/` is build output too: do not commit it.
 * Keep generators deterministic: use `ctx.rng` (seeded from `seed` in the
   spec), never `random` or the clock.
-* Never commit, sample, mix or render reference audio into a part. It lives
-  in `renders/reference/` only, as something to measure against.
+* Reference audio from `stemma reference` is only measured. It lives in
+  `renders/reference/` and is never mixed into a track. To use generated
+  audio, give a part `source: elevenlabs`.
+* Generated part audio (`tracks/<slug>/generated/`) is never committed. Use
+  it only on an ElevenLabs plan whose terms allow your intended use (the free
+  tier does not allow commercial use), and record the plan and the date in
+  the track’s `notes.md`.
 * Ask before adding Python dependencies or system packages.
 * Write docs and notes in British English.
 
@@ -86,6 +94,27 @@ direction to move in, not a target to hit: a generated reference has its own
 arrangement. Its `warnings` flag bands more than 3 dB apart, a centroid more
 than 25% away, and a reference whose tempo or key does not match the spec
 (the key estimate includes drums, so treat that one as a hint).
+
+## Generated parts
+
+A part with `source: elevenlabs` asks the ElevenLabs Music API for one
+instrument on its own. The prompt adds the tempo, key, metre, form and brief to
+the part’s `sound.prompt`, so describe only what the instrument plays and how
+it sounds (“warm Rhodes comping on the chords, sparse in the intro”).
+
+* The whole track is generated once and sliced per section, so `--section`
+  renders cost nothing extra. The audio is cached by request in
+  `tracks/<slug>/generated/` (not cleared by `make clean`). Changing the
+  prompt, tempo, key or form makes a new request. `--force` re-renders stems
+  without calling the API. `--force-generate` calls it again and costs credits.
+* Mark generated parts `optional: true` so the track still builds without
+  `ELEVENLABS_API_KEY`.
+* The model does not follow the grid. `analyse` estimates each generated
+  stem’s tempo and warns when it drifts from the spec. Use
+  `sound.offset_seconds` to line the first downbeat up with bar 1. Check
+  `key_tonal` too.
+* Keep MIDI parts for anything that must lock tightly (drums, bass). Generated
+  parts suit textures, pads and comping.
 
 The analysis is a proxy for listening, not a replacement. Use it to catch
 problems and to confirm that a change did what you intended.

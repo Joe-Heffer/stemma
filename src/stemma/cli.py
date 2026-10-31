@@ -65,7 +65,7 @@ def cmd_midi(a) -> None:
 def cmd_render(a) -> None:
     from .render import render
 
-    _print(render(_spec(a.slug), a.part, a.section, a.force))
+    _print(render(_spec(a.slug), a.part, a.section, a.force, a.force_generate))
 
 
 def cmd_mix(a) -> None:
@@ -116,7 +116,7 @@ def cmd_all(a) -> None:
     _step("midi")
     midi_report = build(spec)
     _step("render")
-    render_report = render(spec, None, a.section, a.force)
+    render_report = render(spec, None, a.section, a.force, a.force_generate)
     _step("mix")
     mix_report = mix(spec, a.section)
     _step("master")
@@ -182,6 +182,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--part")
     s.add_argument("--section")
     s.add_argument("--force", action="store_true", help="ignore the render cache")
+    s.add_argument("--force-generate", action="store_true",
+                   help="call the ElevenLabs API again for generated parts (costs credits)")
     for name, fn, h in (("mix", cmd_mix, "mix stems to a stereo mixdown"),
                         ("master", cmd_master, "loudness-normalise and limit the mix")):
         s = add(name, fn, h)
@@ -207,6 +209,8 @@ def build_parser() -> argparse.ArgumentParser:
     s = add("all", cmd_all, "midi, render, mix, master and analyse")
     s.add_argument("--section")
     s.add_argument("--force", action="store_true")
+    s.add_argument("--force-generate", action="store_true",
+                   help="call the ElevenLabs API again for generated parts (costs credits)")
     add("doctor", cmd_doctor, "report installed tools and sounds", slug=False)
     s = add("sounds", cmd_sounds, "list or fetch shared sounds", slug=False)
     s.add_argument("action", choices=["list", "fetch"])

@@ -129,7 +129,7 @@
       "properties": {
         "name": {"$ref": "#/$defs/identifier"},
         "role": {"enum": ["drums", "percussion", "bass", "lead", "harmony", "pad", "arp", "fx", "vocal", "other"]},
-        "source": {"enum": ["builtin", "fluidsynth", "sfizz", "csound", "faust"]},
+        "source": {"enum": ["builtin", "fluidsynth", "sfizz", "csound", "faust", "elevenlabs"], "description": "elevenlabs: audio generated from sound.prompt, one instrument per part, in place of MIDI."},
         "generator": {"type": "string", "description": "Python script relative to the track folder that exposes build(ctx)."},
         "midi": {"type": "string", "description": "MIDI file relative to the track folder. Defaults to midi/<name>.mid."},
         "optional": {"type": "boolean", "default": false, "description": "Skip with a warning, instead of failing, when the backend is missing."},
@@ -146,6 +146,9 @@
             "path": {"type": "string", "description": "sfizz .sfz, csound .orc or faust .dsp, relative to the track folder or sounds/."},
             "instrument": {"type": ["integer", "string"], "description": "csound: instrument number or name. Default 1."},
             "release": {"type": "number", "minimum": 0, "description": "csound/faust: seconds rendered after note-off."},
+            "prompt": {"type": "string", "minLength": 1, "description": "elevenlabs: what this one instrument plays. Tempo, key, metre, form and the brief are added from the spec."},
+            "model": {"type": "string", "description": "elevenlabs: model id. Default music_v1."},
+            "offset_seconds": {"type": "number", "description": "elevenlabs: seconds to trim from the start (negative delays it) so the audio lines up with bar 1."},
             "gain_db": {"type": "number"}
           },
           "additionalProperties": false

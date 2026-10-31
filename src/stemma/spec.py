@@ -64,7 +64,22 @@ def validate(data: Any) -> list[str]:
                 errors.append(f"$.parts[{i}].mix.sends: unknown bus {send!r}")
         if part["source"] in ("sfizz", "csound", "faust") and "path" not in part.get("sound", {}):
             errors.append(f"$.parts[{i}].sound.path: required for source {part['source']!r}")
+        if part["source"] == "elevenlabs":
+            if "prompt" not in part.get("sound", {}):
+                errors.append(f"$.parts[{i}].sound.prompt: required for source 'elevenlabs'")
+            for k in ("generator", "midi"):
+                if k in part:
+                    errors.append(f"$.parts[{i}].{k}: not used by source 'elevenlabs', "
+                                  "which generates audio from sound.prompt")
     return errors
+
+
+AUDIO_SOURCES = ("elevenlabs",)
+
+
+def is_audio_part(part: dict) -> bool:
+    """True for parts whose audio is generated directly, with no MIDI."""
+    return part["source"] in AUDIO_SOURCES
 
 
 @dataclass(frozen=True)

@@ -1,22 +1,12 @@
-import io
 import json
 
-import numpy as np
 import pytest
-import soundfile as sf
+from conftest import FakeAPI, wav_bytes
 
 from stemma.cli import main
+from stemma.elevenlabs import MAX_PROMPT, build_prompt
 from stemma.paths import track_dir
-from stemma.reference import MAX_PROMPT, build_prompt
 from stemma.spec import load
-
-
-def _wav_bytes(seconds=6.0, sr=44100) -> bytes:
-    t = np.arange(int(seconds * sr)) / sr
-    tone = 0.3 * np.sin(2 * np.pi * 220 * t) + 0.1 * np.sin(2 * np.pi * 1760 * t)
-    buf = io.BytesIO()
-    sf.write(buf, np.column_stack([tone, tone]), sr, format="WAV")
-    return buf.getvalue()
 
 
 @pytest.fixture
@@ -27,15 +17,6 @@ def demo(scratch_root, capsys):
         "What is this track for?", "Moody night-drive synthwave. What is this track for?"))
     capsys.readouterr()
     return load(track_dir("demo"))
-
-
-class FakeAPI:
-    def __init__(self):
-        self.requests = []
-
-    def __call__(self, req, timeout=None):
-        self.requests.append(req)
-        return io.BytesIO(_wav_bytes())
 
 
 def test_prompt_uses_spec_and_brief(demo):
@@ -49,7 +30,7 @@ def test_prompt_uses_spec_and_brief(demo):
 
 def test_compare_with_file(demo, scratch_root, capsys):
     ref = scratch_root / "ref.wav"
-    ref.write_bytes(_wav_bytes())
+    ref.write_bytes(wav_bytes())
     assert main(["reference", "demo", "--file", str(ref)]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["reference"]["bands_db"] and out["compare"] is None
