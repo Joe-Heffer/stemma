@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/joe-heffer/stemma/schema/track.schema.json",
+  "title": "stemma track spec",
+  "description": "Source of truth for one track: musical frame, parts, mix and mastering targets.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["title", "tempo", "key", "time_signature", "sections", "parts"],
+  "properties": {
+    "title": {"type": "string", "minLength": 1},
+    "artist": {"type": "string"},
+    "tempo": {"type": "number", "exclusiveMinimum": 20, "maximum": 400, "description": "Beats per minute (quarter notes). A single fixed tempo."},
+    "key": {
+      "type": "string",
+      "pattern": "^[A-G](#|b)? (major|minor|dorian|phrygian|lydian|mixolydian|locrian)$",
+      "description": "Tonic and mode, e.g. \"A minor\" or \"F# dorian\"."
+    },
+    "time_signature": {
+      "type": "array",
+      "prefixItems": [
+        {"type": "integer", "minimum": 1, "maximum": 32},
+        {"enum": [1, 2, 4, 8, 16, 32]}
+      ],
+      "items": false,
+      "minItems": 2
+    },
+    "sample_rate": {"enum": [44100, 48000, 88200, 96000], "default": 48000},
+    "seed": {"type": "integer", "default": 0, "description": "Seed for generators and humanisation, so renders are reproducible."},
+    "sections": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "bars"],
+        "properties": {
+          "name": {"$ref": "#/$defs/identifier"},
+          "bars": {"type": "integer", "minimum": 1},
+          "description": {"type": "string"}
+        }
+      }
+    },
+    "parts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/part"}
+    },
+    "buses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name"],
+        "properties": {
+          "name": {"$ref": "#/$defs/identifier"},
+          "gain_db": {"type": "number", "default": 0},
+          "pan": {"$ref": "#/$defs/pan"},
+          "fx": {"$ref": "#/$defs/fx_chain"}
+        }
+      }
+    },
+    "mix": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Stereo mix bus, applied after all parts and buses are summed.",
+      "properties": {
+        "engine": {"enum": ["auto", "pedalboard", "scipy"], "default": "auto"},
+        "gain_db": {"type": "number", "default": 0},
+        "fx": {"$ref": "#/$defs/fx_chain"}
+      }
+    },
+    "master": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "lufs": {"type": "number", "maximum": 0, "default": -14},
+        "true_peak": {"type": "number", "maximum": 0, "default": -1},
+        "formats": {"type": "array", "items": {"enum": ["wav", "flac"]}, "uniqueItems": true, "default": ["wav", "flac"]},
+        "bit_depth": {"enum": [16, 24], "default": 24},
+        "tail_seconds": {"type": "number", "minimum": 0, "default": 2, "description": "Silence after the last bar for reverb and release tails."},
+        "fade_out_seconds": {"type": "number", "minimum": 0, "default": 0.5}
+      }
+    },
+    "targets": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Optional ranges; analyse prints a warning when a measurement falls outside them.",
+      "properties": {
+        "stereo_width": {"$ref": "#/$defs/range"},
+        "crest_factor_db": {"$ref": "#/$defs/range"},
+        "bands": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "sub": {"$ref": "#/$defs/range"},
+            "low": {"$ref": "#/$defs/range"},
+            "low_mid": {"$ref": "#/$defs/range"},
+            "high_mid": {"$ref": "#/$defs/range"},
+            "air": {"$ref": "#/$defs/range"}
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "identifier": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
+    "pan": {"type": "number", "minimum": -1, "maximum": 1, "default": 0},
+    "range": {
+      "type": "array",
+      "prefixItems": [{"type": "number"}, {"type": "number"}],
+      "items": false,
+      "minItems": 2,
+      "description": "[min, max]"
+    },
+    "part": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "source"],
+      "properties": {
+        "name": {"$ref": "#/$defs/identifier"},
+        "role": {"enum": ["drums", "percussion", "bass", "lead", "harmony", "pad", "arp", "fx", "vocal", "other"]},
+        "source": {"enum": ["builtin", "fluidsynth", "sfizz", "csound", "faust"]},
+        "generator": {"type": "string", "description": "Python script relative to the track folder that exposes build(ctx)."},
+        "midi": {"type": "string", "description": "MIDI file relative to the track folder. Defaults to midi/<name>.mid."},
+        "optional": {"type": "boolean", "default": false, "description": "Skip with a warning, instead of failing, when the backend is missing."},
+        "sound": {
+          "type": "object",
+          "description": "Backend-specific sound reference.",
+          "properties": {
+            "preset": {"type": "string", "description": "builtin: preset name, e.g. kit, saw-bass, pulse-lead, soft-pad, pluck."},
+            "params": {"type": "object", "description": "builtin: overrides for preset parameters."},
+            "soundfont": {"type": "string", "description": "fluidsynth: a name from sounds/manifest.yaml or a path."},
+            "program": {"type": "integer", "minimum": 0, "maximum": 127, "description": "General MIDI program number (0-based)."},
+            "bank": {"type": "integer", "minimum": 0, "maximum": 16383},
+            "drums": {"type": "boolean", "description": "Write the part on MIDI channel 10."},
+            "path": {"type": "string", "description": "sfizz .sfz, csound .orc or faust .dsp, relative to the track folder or sounds/."},
+            "instrument": {"type": ["integer", "string"], "description": "csound: instrument number or name. Default 1."},
+            "release": {"type": "number", "minimum": 0, "description": "csound/faust: seconds rendered after note-off."},
+            "gain_db": {"type": "number"}
+          },
+          "additionalProperties": false
+        },
+        "mix": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "gain_db": {"type": "number", "default": 0},
+            "pan": {"$ref": "#/$defs/pan"},
+            "width": {"type": "number", "minimum": 0, "maximum": 2, "default": 1, "description": "Stereo width for stereo stems: 0 mono, 1 unchanged, 2 wide."},
+            "bus": {"type": "string", "default": "master"},
+            "sends": {"type": "object", "additionalProperties": {"type": "number"}, "description": "Bus name to send level in dB (post-fader)."},
+            "mute": {"type": "boolean", "default": false},
+            "solo": {"type": "boolean", "default": false},
+            "fx": {"$ref": "#/$defs/fx_chain"}
+          }
+        },
+        "notes": {"type": "string"}
+      }
+    },
+    "fx_chain": {"type": "array", "items": {"$ref": "#/$defs/fx"}},
+    "fx": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {"enum": ["gain", "highpass", "lowpass", "peak", "lowshelf", "highshelf", "compressor", "limiter", "reverb", "delay", "distortion", "chorus"]},
+        "bypass": {"type": "boolean"}
+      },
+      "allOf": [
+        {"if": {"properties": {"type": {"const": "gain"}}}, "then": {"properties": {"gain_db": {"type": "number"}}, "required": ["gain_db"]}},
+        {"if": {"properties": {"type": {"enum": ["highpass", "lowpass"]}}}, "then": {"properties": {"cutoff_hz": {"$ref": "#/$defs/freq"}}, "required": ["cutoff_hz"]}},
+        {"if": {"properties": {"type": {"enum": ["peak", "lowshelf", "highshelf"]}}}, "then": {"properties": {"freq_hz": {"$ref": "#/$defs/freq"}, "gain_db": {"type": "number"}, "q": {"type": "number", "exclusiveMinimum": 0}}, "required": ["freq_hz", "gain_db"]}},
+        {"if": {"properties": {"type": {"const": "compressor"}}}, "then": {"properties": {"threshold_db": {"type": "number", "maximum": 0}, "ratio": {"type": "number", "minimum": 1}, "attack_ms": {"type": "number", "exclusiveMinimum": 0}, "release_ms": {"type": "number", "exclusiveMinimum": 0}, "makeup_db": {"type": "number"}}}},
+        {"if": {"properties": {"type": {"const": "reverb"}}}, "then": {"properties": {"room_size": {"$ref": "#/$defs/unit"}, "damping": {"$ref": "#/$defs/unit"}, "wet": {"$ref": "#/$defs/unit"}, "dry": {"$ref": "#/$defs/unit"}, "width": {"$ref": "#/$defs/unit"}}}},
+        {"if": {"properties": {"type": {"const": "delay"}}}, "then": {"properties": {"beats": {"type": "number", "exclusiveMinimum": 0}, "seconds": {"type": "number", "exclusiveMinimum": 0}, "feedback": {"type": "number", "minimum": 0, "maximum": 0.95}, "mix": {"$ref": "#/$defs/unit"}}}},
+        {"if": {"properties": {"type": {"const": "distortion"}}}, "then": {"properties": {"drive_db": {"type": "number", "minimum": 0}}}},
+        {"if": {"properties": {"type": {"const": "chorus"}}}, "then": {"properties": {"rate_hz": {"type": "number"}, "depth": {"$ref": "#/$defs/unit"}, "mix": {"$ref": "#/$defs/unit"}}}},
+        {"if": {"properties": {"type": {"const": "limiter"}}}, "then": {"properties": {"threshold_db": {"type": "number", "maximum": 0}, "release_ms": {"type": "number"}}}}
+      ]
+    },
+    "freq": {"type": "number", "minimum": 10, "maximum": 24000},
+    "unit": {"type": "number", "minimum": 0, "maximum": 1}
+  }
+}
