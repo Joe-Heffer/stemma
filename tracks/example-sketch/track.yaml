@@ -1,0 +1,90 @@
+# Example sketch: a 32-second synth-pop loop that exercises the whole chain.
+title: Example Sketch
+tempo: 120
+key: A minor
+time_signature: [4, 4]
+sample_rate: 48000
+seed: 7
+
+sections:
+  - {name: intro, bars: 4, description: "kick and hats, bass enters in bar 3"}
+  - {name: groove, bars: 8, description: "full kit, bass and lead; fill into the outro"}
+  - {name: outro, bars: 4, description: "lead drops out, kit thins, ends on a held A"}
+
+parts:
+  - name: drums
+    role: drums
+    source: builtin
+    generator: parts/drums.py
+    sound: {preset: kit}
+    mix:
+      gain_db: -1
+      bus: drums
+
+  - name: bass
+    role: bass
+    source: builtin
+    generator: parts/bass.py
+    sound: {preset: saw-bass}
+    mix:
+      gain_db: -3
+      fx:
+        - {type: highpass, cutoff_hz: 32}
+        - {type: peak, freq_hz: 300, gain_db: -2.5, q: 1.0}
+        - {type: compressor, threshold_db: -16, ratio: 3, attack_ms: 15, release_ms: 120}
+
+  - name: lead
+    role: lead
+    source: builtin
+    generator: parts/lead.py
+    sound: {preset: pulse-lead}
+    mix:
+      gain_db: -2
+      pan: 0.1
+      sends: {verb: -9}
+      fx:
+        - {type: highpass, cutoff_hz: 180}
+        - {type: delay, beats: 0.75, feedback: 0.28, mix: 0.18}
+
+  - name: pad
+    role: pad
+    source: fluidsynth
+    optional: true          # skipped with a warning when FluidSynth or the soundfont is absent
+    generator: parts/pad.py
+    sound: {soundfont: FluidR3_GM, program: 89}   # GM "Pad 2 (warm)"
+    mix:
+      gain_db: -9
+      width: 1.3
+      sends: {verb: -6}
+      fx:
+        - {type: highpass, cutoff_hz: 220}
+
+buses:
+  - name: drums
+    gain_db: 0
+    fx:
+      - {type: compressor, threshold_db: -14, ratio: 2.5, attack_ms: 20, release_ms: 100}
+  - name: verb
+    fx:
+      - {type: highpass, cutoff_hz: 300}
+      - {type: reverb, room_size: 0.7, damping: 0.5, wet: 1.0, dry: 0.0, width: 1.0}
+
+mix:
+  engine: auto
+  fx:
+    - {type: highpass, cutoff_hz: 25}
+    - {type: compressor, threshold_db: -10, ratio: 1.8, attack_ms: 30, release_ms: 200}
+
+master:
+  lufs: -14
+  true_peak: -1
+  formats: [wav, flac]
+  tail_seconds: 2
+  fade_out_seconds: 1
+
+targets:
+  stereo_width: [0.02, 0.4]
+  crest_factor_db: [8, 18]
+  bands:
+    sub: [-12, -3]
+    air: [-30, -10]
