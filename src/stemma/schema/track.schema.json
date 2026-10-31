@@ -92,7 +92,17 @@
       "properties": {
         "lufs": {"type": "number", "maximum": 0, "default": -14},
         "true_peak": {"type": "number", "maximum": 0, "default": -1},
-        "formats": {"type": "array", "items": {"enum": ["wav", "flac"]}, "uniqueItems": true, "default": ["wav", "flac"]},
+        "formats": {"type": "array", "items": {"enum": ["wav", "flac", "mp3", "ogg"]}, "uniqueItems": true, "default": ["wav", "flac"], "description": "mp3 and ogg need a libsndfile built with them (the soundfile wheels are)."},
+        "fx": {"$ref": "#/$defs/fx_chain", "description": "Mastering chain, applied to the mixdown before loudness normalisation and the limiter."},
+        "normalise": {"type": "boolean", "default": true, "description": "Gain to the lufs target. false keeps the mix level and only limits."},
+        "limiter": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "release_ms": {"type": "number", "exclusiveMinimum": 0, "default": 60},
+            "lookahead_ms": {"type": "number", "exclusiveMinimum": 0, "maximum": 20, "default": 4}
+          }
+        },
         "bit_depth": {"enum": [16, 24], "default": 24},
         "tail_seconds": {"type": "number", "minimum": 0, "default": 2, "description": "Silence after the last bar for reverb and release tails."},
         "fade_out_seconds": {"type": "number", "minimum": 0, "default": 0.5}

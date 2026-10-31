@@ -21,6 +21,9 @@ DEFAULT_MASTER = {
     "bit_depth": 24,
     "tail_seconds": 2.0,
     "fade_out_seconds": 0.5,
+    "fx": [],
+    "normalise": True,
+    "limiter": {},
 }
 
 DEFAULT_SCORE = {"grid": 16, "formats": ["musicxml", "ly", "pdf"]}

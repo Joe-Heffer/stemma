@@ -121,3 +121,34 @@ def test_automation_mutes_a_section(demo, capsys):
     b0, b1 = (int(t * sr) for t in spec.section_span("b"))
     assert np.abs(x[:b0]).max() > 0.01
     assert np.abs(x[b0 + 100:b1]).max() == 0
+
+
+def test_limiter_stats_in_master_audio():
+    from stemma.master import master_audio
+
+    rng = np.random.default_rng(3)
+    t = np.arange(SR * 6) / SR
+    quiet = 0.05 * np.sin(2 * np.pi * 110 * t)[:, None] * np.ones((1, 2))
+    _, easy = master_audio(quiet, SR, lufs=-20, true_peak=-1)
+    assert easy["limiter"]["max_db"] < 0.5 and easy["warnings"] == []
+    # Sparse loud spikes: hitting -8 LUFS needs heavy limiting.
+    spiky = quiet + (rng.random((len(t), 1)) > 0.999) * 0.9
+    _, hard = master_audio(spiky, SR, lufs=-8, true_peak=-1)
+    assert hard["limiter"]["max_db"] > 6
+    assert any("working too hard" in w for w in hard["warnings"])
+    _, kept = master_audio(quiet, SR, lufs=-8, true_peak=-1, normalise=False)
+    assert kept["gain_db"] == 0 and kept["lufs"] < -20
+
+
+def test_master_chain_and_formats(demo, capsys):
+    run(capsys, "mix", "demo")
+    edit_spec(demo, lambda d: d["master"].update(
+        fx=[{"type": "stereo_width", "mono_below_hz": 120},
+            {"type": "compressor", "threshold_db": -12, "ratio": 2}],
+        limiter={"release_ms": 80}, formats=["wav", "mp3"]))
+    report = run(capsys, "master", "demo")
+    assert report["chain"] == ["stereo_width", "compressor"]
+    assert report["dynamics"][0]["type"] == "compressor"
+    assert set(report["limiter"]) == {"max_db", "mean_db", "percent_over_1db"}
+    assert (demo / "tracks/demo/renders/master.mp3").stat().st_size > 1000
+    assert abs(report["lufs"] + 14) < 0.5
