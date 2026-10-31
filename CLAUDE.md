@@ -60,6 +60,7 @@ will not know which change helped.
 | `stereo_width_above_300hz` | the same above 300 Hz | 0.05–0.3 for a full mix |
 | `correlation` | L/R correlation | keep above 0; negative collapses in mono |
 | `tempo_bpm`, `key` | estimates from audio | should match the spec (half/double tempo and relative keys are accepted) |
+| `key_tonal` | key of the non-drum stems only | more reliable than `key` when drums are loud; used for the key warning |
 | `clipped_samples` | samples at full scale | 0 |
 | `octave_bands_db` | absolute power per octave (31.5 Hz–16 kHz), per stem | compare stems with each other, not with fixed numbers |
 | `masking` | stem pairs both strong, and within 6 dB, in one octave | empty, or explained (kick and bass often share 63 Hz) |

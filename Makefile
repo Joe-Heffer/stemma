@@ -13,10 +13,10 @@ help:
 	@echo "make test | lint | doctor | clean"
 
 setup:
-	uv sync
+	@uv sync --quiet
 
 new validate midi render mix master analyse all: setup
-	$(STEMMA) $@ $(TRACK) $(ARGS)
+	@$(STEMMA) $@ $(TRACK) $(ARGS)
 
 doctor: setup
 	$(STEMMA) doctor

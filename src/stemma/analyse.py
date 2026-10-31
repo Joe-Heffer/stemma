@@ -205,8 +205,9 @@ def check_targets(spec: Spec, name: str, m: dict, is_master: bool) -> list[str]:
             ratio = m["tempo_bpm"] / spec.tempo
             if min(abs(ratio - r) for r in (0.5, 1, 2)) > 0.04:
                 warn.append(f"{name}: estimated tempo {m['tempo_bpm']} vs spec {spec.tempo}")
-        if m.get("key") and not keys_compatible(m["key"], spec.key):
-            warn.append(f"{name}: estimated key {m['key']} vs spec {spec.key}")
+        key = m.get("key_tonal") or m.get("key")
+        if key and not keys_compatible(key, spec.key):
+            warn.append(f"{name}: estimated key {key} vs spec {spec.key}")
         if m["correlation"] is not None and m["correlation"] < 0:
             warn.append(f"{name}: negative L/R correlation, mono collapse risk")
         t = spec.targets
@@ -218,6 +219,25 @@ def check_targets(spec: Spec, name: str, m: dict, is_master: bool) -> list[str]:
             if not rng[0] <= v <= rng[1]:
                 warn.append(f"{name}: {band} band {v} dB outside {rng}")
     return warn
+
+
+def tonal_key(spec: Spec, post: Path) -> dict | None:
+    """Key of the pitched parts only (post-fader, drums excluded).
+
+    Pitched kicks, snares and hats skew the chroma of a full mix, so this is
+    the more reliable estimate when drum parts are present.
+    """
+    total = None
+    for part in spec.parts:
+        wav = post / f"{part['name']}.wav"
+        if part.get("role") in ("drums", "percussion") or not wav.is_file():
+            continue
+        x, sr = sf.read(str(wav), dtype="float64", always_2d=True)
+        total = x if total is None else total[: len(x)] + x[: len(total)]
+    if total is None or np.abs(total).max() < 1e-6:
+        return None
+    k = estimate_key(total.mean(axis=1), sr)
+    return {"key_tonal": k["key"], "key_tonal_confidence": k["key_confidence"]}
 
 
 def analyse(spec: Spec, section: str | None = None, stem: str | None = None) -> dict:
@@ -240,12 +260,15 @@ def analyse(spec: Spec, section: str | None = None, stem: str | None = None) -> 
             warnings_ += check_targets(spec, name, m, False)
         elif stem:
             raise StemmaError(f"{wav} missing; render it first")
+    tonal = None if stem else tonal_key(spec, post)
     for label in ("mix", "master"):
         if stem:
             break
         wav = root / f"{label}.wav"
         if wav.is_file():
             m = analyse_file(wav)
+            if tonal:
+                m.update(tonal)
             report[label] = m
             warnings_ += check_targets(spec, label, m, label == "master")
     report["masking"] = masking_pairs(report["stems"])

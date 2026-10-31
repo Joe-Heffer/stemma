@@ -15,6 +15,7 @@ def test_new_then_full_chain(scratch_root, capsys):
     assert abs(master["lufs_integrated"] + 14) < 0.5
     assert master["true_peak_dbtp"] <= -0.95
     assert master["clipped_samples"] == 0
+    assert master["key_tonal"]  # drums excluded from this estimate
     renders = scratch_root / "tracks/demo/renders"
     assert report["analysis"]["stems"]["bass"]["measured"] == "post-mix"
     for f in ("master.wav", "master.flac", "mix.wav", "analysis.json", "stems/drums.wav",
