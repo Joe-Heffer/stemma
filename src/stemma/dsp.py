@@ -166,12 +166,13 @@ def true_peak_envelope(x: np.ndarray, oversample: int = 4) -> np.ndarray:
 
 
 def limiter(x: np.ndarray, sr: int, ceiling_db: float = -1.0, release_ms: float = 60.0,
-            lookahead_ms: float = 4.0, oversample: int = 4) -> np.ndarray:
+            lookahead_ms: float = 4.0, oversample: int = 4, return_gain: bool = False):
     """Look-ahead brickwall limiter on the true (oversampled) peak.
 
     The gain needed at each sample is held for the look-ahead before and the
     release time after it, then smoothed with a window shorter than the
-    look-ahead, so gain is always at or below what each peak needs.
+    look-ahead, so gain is always at or below what each peak needs. With
+    ``return_gain`` it returns ``(audio, gain)``, the per-sample linear gain.
     """
     x2 = as_2d(x)
     ceiling = db_to_amp(ceiling_db) * 0.995  # margin for inter-sample error
@@ -184,7 +185,8 @@ def limiter(x: np.ndarray, sr: int, ceiling_db: float = -1.0, release_ms: float 
     k /= k.sum()
     gain = np.convolve(np.pad(held, (la // 2, la // 2), mode="edge"), k, mode="valid")
     y = x2 * gain[:, None]
-    return y if x.ndim == 2 else y[:, 0]
+    y = y if x.ndim == 2 else y[:, 0]
+    return (y, gain) if return_gain else y
 
 
 def feedback_comb(x: np.ndarray, delay: int, feedback: float,
@@ -280,3 +282,145 @@ def pan_stereo(x: np.ndarray, pan: float, width: float = 1.0) -> np.ndarray:
     left, right = mid + side, mid - side
     norm = np.sqrt(2)  # balance law that leaves centre at unity
     return np.stack([left * gl * norm, right * gr * norm], axis=1)
+
+
+# Mix tools: gate, transients, stereo image, convolution ---------------------
+
+def gate(x: np.ndarray, sr: int, threshold_db=-50.0, ratio=10.0, attack_ms=1.0,
+         release_ms=80.0, hold_ms=0.0, range_db=40.0) -> np.ndarray:
+    """Downward expander: below the threshold, gain falls by ``ratio`` dB per dB.
+
+    ``range_db`` caps the attenuation; ``hold_ms`` keeps the gate open after
+    the level drops.
+    """
+    from scipy.ndimage import maximum_filter1d
+
+    x2 = as_2d(x)
+    # A 10 ms running peak first, so the threshold compares with signal peaks
+    # rather than the average of one cycle.
+    peak = maximum_filter1d(np.max(np.abs(x2), axis=1), size=max(1, int(0.01 * sr)))
+    env = envelope_follower(peak, sr, attack_ms, release_ms)
+    hold = int(sr * hold_ms / 1000)
+    if hold > 1:
+        env = maximum_filter1d(env, size=hold, origin=-(hold // 2))
+    env_db = 20 * np.log10(np.maximum(env, 1e-9))
+    under = np.maximum(threshold_db - env_db, 0)
+    gain_db = -np.minimum(under * (ratio - 1), range_db)
+    y = x2 * (10 ** (gain_db / 20))[:, None]
+    return y if x.ndim == 2 else y[:, 0]
+
+
+def transient_shaper(x: np.ndarray, sr: int, attack_db=0.0, sustain_db=0.0) -> np.ndarray:
+    """Boost or cut onsets (``attack_db``) and tails (``sustain_db``).
+
+    Compares a fast and a slow envelope: the fast one leads at onsets and
+    falls below the slow one as a note decays. Gain moves fully once the two
+    are 6 dB apart.
+    """
+    x2 = as_2d(x)
+    level = np.max(np.abs(x2), axis=1)
+    fast = envelope_follower(level, sr, 0.5, 20)
+    slow = envelope_follower(level, sr, 25, 250)
+    diff = 20 * np.log10(np.maximum(fast, 1e-9) / np.maximum(slow, 1e-9))
+    gain_db = attack_db * np.clip(diff / 6, 0, 1) + sustain_db * np.clip(-diff / 6, 0, 1)
+    # Smooth so gain changes do not click.
+    k = max(1, int(0.002 * sr))
+    gain_db = np.convolve(gain_db, np.ones(k) / k, mode="same")
+    y = x2 * (10 ** (gain_db / 20))[:, None]
+    return y if x.ndim == 2 else y[:, 0]
+
+
+def crossover(x: np.ndarray, freq: float, sr: int) -> tuple[np.ndarray, np.ndarray]:
+    """Linkwitz–Riley 4th-order split into (low, high); their sum is allpass."""
+    q = 0.7071
+    low = filt(filt(x, "lowpass", freq, sr, q), "lowpass", freq, sr, q)
+    high = filt(filt(x, "highpass", freq, sr, q), "highpass", freq, sr, q)
+    return low, high
+
+
+def ms_encode(x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    return (x[:, 0] + x[:, 1]) / 2, (x[:, 0] - x[:, 1]) / 2
+
+
+def ms_decode(mid: np.ndarray, side: np.ndarray) -> np.ndarray:
+    return np.stack([mid + side, mid - side], axis=1)
+
+
+def stereo_width(x: np.ndarray, sr: int, width=1.0, mono_below_hz=None) -> np.ndarray:
+    """Scale side energy by ``width``; optionally sum everything below a crossover to mono."""
+    x2 = as_2d(x)
+    if x2.shape[1] < 2:
+        return x2
+    if mono_below_hz:
+        low, high = crossover(x2[:, :2], mono_below_hz, sr)
+        low_mid, _ = ms_encode(low)
+        mid, side = ms_encode(high)
+        return ms_decode(mid + low_mid, side * width)
+    mid, side = ms_encode(x2[:, :2])
+    return ms_decode(mid, side * width)
+
+
+def convolve(x: np.ndarray, ir: np.ndarray, mix=0.3, predelay: int = 0) -> np.ndarray:
+    """Convolution reverb. ``ir`` is (samples, channels) at the signal's rate.
+
+    The IR is scaled to unit energy so ``mix`` behaves the same across IRs.
+    Output keeps the input length; leave room with ``master.tail_seconds``.
+    """
+    x2, ir = as_2d(x), as_2d(ir)
+    ir = ir / max(np.sqrt(np.sum(ir**2) / ir.shape[1]), 1e-12)
+    ch = max(x2.shape[1], ir.shape[1])
+    if x2.shape[1] < ch:
+        x2 = np.repeat(x2, ch, axis=1)
+    n = len(x2)
+    wet = np.zeros_like(x2)
+    for c in range(ch):
+        w = signal.fftconvolve(x2[:, c], ir[:, min(c, ir.shape[1] - 1)])[:n]
+        if predelay:
+            w = np.concatenate([np.zeros(predelay), w])[:n]
+        wet[:, c] = w
+    return x2 * (1 - mix) + wet * mix
+
+
+def gain_reduction(before: np.ndarray, after: np.ndarray, sr: int,
+                   offset_db: float = 0.0, floor_db: float = -60.0) -> dict:
+    """How much a dynamics stage turned the signal down, from 10 ms RMS blocks.
+
+    Blocks quieter than ``floor_db`` at the input are ignored. ``offset_db``
+    removes make-up gain so only reduction is counted.
+    """
+    b, a = as_2d(before), as_2d(after)
+    n = min(len(b), len(a))
+    blk = max(1, int(0.01 * sr))
+    m = (n // blk) * blk
+    if m == 0:
+        return {"max_db": 0.0, "mean_db": 0.0, "percent_over_1db": 0.0}
+
+    def rms_db(z):
+        p = np.mean(z[:m].reshape(-1, blk, z.shape[1]) ** 2, axis=(1, 2))
+        return 10 * np.log10(np.maximum(p, 1e-15))
+
+    rb, ra = rms_db(b), rms_db(a)
+    keep = rb > floor_db
+    if not keep.any():
+        return {"max_db": 0.0, "mean_db": 0.0, "percent_over_1db": 0.0}
+    gr = np.maximum(rb[keep] - (ra[keep] - offset_db), 0)
+    return {"max_db": round(float(gr.max()), 1), "mean_db": round(float(gr.mean()), 1),
+            "percent_over_1db": round(float(np.mean(gr > 1) * 100), 1)}
+
+
+def duck_gain(trigger: np.ndarray, sr: int, depth_db=6.0, threshold_db=-30.0, ratio=4.0,
+              attack_ms=5.0, release_ms=150.0, filter_hz=None) -> np.ndarray:
+    """Per-sample linear gain that ducks a signal while ``trigger`` is loud.
+
+    A compressor keyed from another signal: above ``threshold_db`` gain falls
+    by ``1 - 1/ratio`` dB per dB, never by more than ``depth_db``. ``filter_hz``
+    lowpasses the trigger first so, say, only the kick of a drum stem counts.
+    """
+    t = as_2d(trigger)
+    if filter_hz:
+        t = filt(filt(t, "lowpass", filter_hz, sr), "lowpass", filter_hz, sr)
+    level = np.max(np.abs(t), axis=1)
+    env = envelope_follower(level, sr, attack_ms, release_ms)
+    env_db = 20 * np.log10(np.maximum(env, 1e-9))
+    over = np.maximum(env_db - threshold_db, 0)
+    return 10 ** (-np.minimum(over * (1 - 1 / ratio), depth_db) / 20)

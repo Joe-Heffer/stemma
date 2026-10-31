@@ -11,7 +11,7 @@ import pretty_midi
 
 from .compose import Context
 from .errors import StemmaError
-from .spec import Spec
+from .spec import Spec, is_audio_part
 from .theory import note_name
 
 # An unused controller, written after the last note so renderers that stop at the
@@ -25,6 +25,12 @@ class NoteEvent:
     start: float  # seconds
     end: float  # seconds
     velocity: int
+
+
+def is_drum(part: dict) -> bool:
+    """True when a part is written on MIDI channel 10 (GM percussion)."""
+    sound = part.get("sound", {})
+    return bool(sound.get("drums", part.get("role") in ("drums", "percussion")))
 
 
 def run_generator(spec: Spec, part: dict) -> Context:
@@ -52,8 +58,7 @@ def write_part(spec: Spec, part: dict, ctx: Context, path: Path) -> pretty_midi.
         pretty_midi.TimeSignature(spec.numerator, spec.denominator, 0.0)
     )
     sound = part.get("sound", {})
-    is_drum = bool(sound.get("drums", part.get("role") in ("drums", "percussion")))
-    inst = pretty_midi.Instrument(program=sound.get("program", 0), is_drum=is_drum,
+    inst = pretty_midi.Instrument(program=sound.get("program", 0), is_drum=is_drum(part),
                                   name=part["name"])
     bank = sound.get("bank")
     if bank is not None:
@@ -80,6 +85,10 @@ def build(spec: Spec, only: str | None = None) -> list[dict]:
     report = []
     for part in spec.parts:
         if only and part["name"] != only:
+            continue
+        if is_audio_part(part):
+            report.append({"part": part["name"], "origin": "audio", "source": part["source"],
+                           "note": "no MIDI: rendered from sound.prompt"})
             continue
         path = spec.midi_path(part)
         if "generator" in part:

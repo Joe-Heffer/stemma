@@ -224,3 +224,6 @@ sounds/cache/
 *.wav
 *.flac
 !sounds/samples/**/*.wav
+
+# Generated part audio (ElevenLabs): kept outside renders/ so `make clean` keeps it
+tracks/*/generated/

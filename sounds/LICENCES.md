@@ -11,6 +11,18 @@ sounds with "non-commercial" or unclear terms.
 | FluidR3Mono_GM | SF3 | MIT | Frank Wen; MuseScore conversion | No (fetched to `sounds/cache/`) | none yet |
 | builtin presets | Synthesis code | MIT (this repo) | `src/stemma/render/builtin.py` | Yes | all example parts |
 
+Reference audio from `stemma reference` (generated with ElevenLabs or
+supplied with `--file`) is not a sound in this sense. It stays in the
+gitignored `renders/reference/`, is only measured, and must never be used by a
+track, so it is not listed here.
+
+Parts with `source: elevenlabs` do use generated audio in a track. That audio
+is never committed (it lives in the gitignored `tracks/<slug>/generated/`) and
+is governed by the ElevenLabs terms for the plan that generated it, not by this
+repository’s licence. Use it only on a plan that allows your intended use (the
+free tier is non-commercial), and record the plan and date in the track’s
+`notes.md`, since the terms vary by track and owner.
+
 Patches written for a track (Faust `.dsp`, Csound `.orc`, SFZ text) live in
 `tracks/<slug>/patches/` and are covered by the repository's MIT licence unless
 their header says otherwise.

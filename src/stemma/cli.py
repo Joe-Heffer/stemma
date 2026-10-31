@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sys
 import time
@@ -64,7 +65,7 @@ def cmd_midi(a) -> None:
 def cmd_render(a) -> None:
     from .render import render
 
-    _print(render(_spec(a.slug), a.part, a.section, a.force))
+    _print(render(_spec(a.slug), a.part, a.section, a.force, a.force_generate))
 
 
 def cmd_mix(a) -> None:
@@ -79,6 +80,12 @@ def cmd_master(a) -> None:
     _print(master(_spec(a.slug), a.section))
 
 
+def cmd_score(a) -> None:
+    from .score import score
+
+    _print(score(_spec(a.slug), a.section, a.part, a.format))
+
+
 def cmd_analyse(a) -> None:
     from .analyse import analyse, analyse_file
 
@@ -88,6 +95,19 @@ def cmd_analyse(a) -> None:
     if not a.slug:
         raise StemmaError("give a track slug or --file")
     _print(analyse(_spec(a.slug), a.section, a.stem))
+
+
+def cmd_plot(a) -> None:
+    from .plot import plot
+
+    _print(plot(_spec(a.slug), a.section, a.kind, a.stem))
+
+
+def cmd_reference(a) -> None:
+    from .reference import reference
+
+    _print(reference(_spec(a.slug), a.prompt, a.seconds, a.model, a.force,
+                     Path(a.file) if a.file else None))
 
 
 def cmd_all(a) -> None:
@@ -102,7 +122,7 @@ def cmd_all(a) -> None:
     _step("midi")
     midi_report = build(spec)
     _step("render")
-    render_report = render(spec, None, a.section, a.force)
+    render_report = render(spec, None, a.section, a.force, a.force_generate)
     _step("mix")
     mix_report = mix(spec, a.section)
     _step("master")
@@ -123,6 +143,7 @@ def cmd_doctor(a) -> None:
     tools["ffmpeg"] = shutil.which("ffmpeg")
     tools["sox"] = shutil.which("sox")
     tools["lilypond"] = shutil.which("lilypond")
+    from importlib.metadata import version
     found = {}
     for name in sounds.manifest():
         try:
@@ -130,7 +151,20 @@ def cmd_doctor(a) -> None:
         except StemmaError:
             found[name] = None
     _print({"stemma": __version__, "root": str(repo_root()), "tools": tools,
-            "pedalboard": pedalboard_available(), "sounds": found})
+            "pedalboard": pedalboard_available(),
+            "elevenlabs_api_key": bool(os.environ.get("ELEVENLABS_API_KEY")),
+            "music21": version("music21"),
+            "matplotlib": _version_or_none("matplotlib"),
+            "sounds": found})
+
+
+def _version_or_none(dist: str) -> str | None:
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version(dist)
+    except PackageNotFoundError:
+        return None
 
 
 def cmd_sounds(a) -> None:
@@ -164,19 +198,40 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--part")
     s.add_argument("--section")
     s.add_argument("--force", action="store_true", help="ignore the render cache")
+    s.add_argument("--force-generate", action="store_true",
+                   help="call the ElevenLabs API again for generated parts (costs credits)")
     for name, fn, h in (("mix", cmd_mix, "mix stems to a stereo mixdown"),
                         ("master", cmd_master, "loudness-normalise and limit the mix")):
         s = add(name, fn, h)
         s.add_argument("--section")
+    s = add("score", cmd_score, "write sheet music: MusicXML, LilyPond and PDF")
+    s.add_argument("--part")
+    s.add_argument("--section")
+    s.add_argument("--format", nargs="+", choices=["musicxml", "ly", "pdf"],
+                   help="override score.formats from the spec")
     s = sub.add_parser("analyse", aliases=["analyze"], help="print analysis JSON")
     s.add_argument("slug", nargs="?")
     s.add_argument("--section")
     s.add_argument("--stem", help="analyse one stem only")
     s.add_argument("--file", help="analyse any audio file")
     s.set_defaults(func=cmd_analyse)
+    s = add("plot", cmd_plot, "PNG plots: stem spectra, spectrogram, loudness over time")
+    s.add_argument("--section")
+    s.add_argument("--kind", nargs="+", choices=["spectrum", "spectrogram", "loudness"],
+                   help="which plots (default: all)")
+    s.add_argument("--stem", nargs="+", help="stems to overlay on the spectrum (default: all)")
+    s = add("reference", cmd_reference,
+            "generate a reference track from the brief and compare the master with it")
+    s.add_argument("--prompt", help="override the prompt built from the spec and brief")
+    s.add_argument("--seconds", type=float, help="length (default: the spec duration)")
+    s.add_argument("--model", help="ElevenLabs model id (default music_v1)")
+    s.add_argument("--force", action="store_true", help="call the API even if cached")
+    s.add_argument("--file", help="compare with this audio file instead of generating")
     s = add("all", cmd_all, "midi, render, mix, master and analyse")
     s.add_argument("--section")
     s.add_argument("--force", action="store_true")
+    s.add_argument("--force-generate", action="store_true",
+                   help="call the ElevenLabs API again for generated parts (costs credits)")
     add("doctor", cmd_doctor, "report installed tools and sounds", slug=False)
     s = add("sounds", cmd_sounds, "list or fetch shared sounds", slug=False)
     s.add_argument("action", choices=["list", "fetch"])
