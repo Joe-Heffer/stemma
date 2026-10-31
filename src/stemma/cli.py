@@ -97,6 +97,12 @@ def cmd_analyse(a) -> None:
     _print(analyse(_spec(a.slug), a.section, a.stem))
 
 
+def cmd_plot(a) -> None:
+    from .plot import plot
+
+    _print(plot(_spec(a.slug), a.section, a.kind, a.stem))
+
+
 def cmd_reference(a) -> None:
     from .reference import reference
 
@@ -148,7 +154,17 @@ def cmd_doctor(a) -> None:
             "pedalboard": pedalboard_available(),
             "elevenlabs_api_key": bool(os.environ.get("ELEVENLABS_API_KEY")),
             "music21": version("music21"),
+            "matplotlib": _version_or_none("matplotlib"),
             "sounds": found})
+
+
+def _version_or_none(dist: str) -> str | None:
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version(dist)
+    except PackageNotFoundError:
+        return None
 
 
 def cmd_sounds(a) -> None:
@@ -199,6 +215,11 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--stem", help="analyse one stem only")
     s.add_argument("--file", help="analyse any audio file")
     s.set_defaults(func=cmd_analyse)
+    s = add("plot", cmd_plot, "PNG plots: stem spectra, spectrogram, loudness over time")
+    s.add_argument("--section")
+    s.add_argument("--kind", nargs="+", choices=["spectrum", "spectrogram", "loudness"],
+                   help="which plots (default: all)")
+    s.add_argument("--stem", nargs="+", help="stems to overlay on the spectrum (default: all)")
     s = add("reference", cmd_reference,
             "generate a reference track from the brief and compare the master with it")
     s.add_argument("--prompt", help="override the prompt built from the spec and brief")

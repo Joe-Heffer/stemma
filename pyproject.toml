@@ -24,6 +24,8 @@ dependencies = [
 # Pedalboard is GPL-3.0. It is optional so the core package stays MIT-clean;
 # `stemma mix` falls back to scipy DSP when it is absent.
 fx = ["pedalboard>=0.9.16"]
+# Spectrum, spectrogram and loudness plots from `stemma plot`.
+plot = ["matplotlib>=3.8"]
 
 [project.scripts]
 stemma = "stemma.cli:main"

@@ -172,3 +172,15 @@ def test_analyse_sections_and_delta(demo, capsys):
     # Re-running with nothing changed still reports the last change.
     third = run(capsys, "analyse", "demo")
     assert third["delta"]["changed"]["stems.bass.lufs_integrated"] == change
+
+
+def test_plot(demo, capsys):
+    pytest.importorskip("matplotlib")
+    run(capsys, "mix", "demo")
+    run(capsys, "master", "demo")
+    report = run(capsys, "plot", "demo")
+    for kind in ("spectrum", "spectrogram", "loudness"):
+        png = demo / "tracks/demo" / report["plots"][kind]
+        assert png.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+    one = run(capsys, "plot", "demo", "--kind", "spectrum", "--stem", "bass")
+    assert list(one["plots"]) == ["spectrum"]
