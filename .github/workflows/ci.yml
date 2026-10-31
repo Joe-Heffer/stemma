@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - run: uv run ruff check src tests tracks
+      - run: uv run ruff format --check src tests tracks
+        continue-on-error: true
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+      - name: Install renderers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libsndfile1 fluidsynth fluid-soundfont-gm csound faust g++
+      - run: uv sync --locked
+      - run: uv run stemma doctor
+      - run: uv run pytest -q
+
+  example-track:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install renderers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libsndfile1 fluidsynth fluid-soundfont-gm csound faust g++
+      - run: uv sync --locked
+      - run: uv run stemma validate example-sketch
+      - run: uv run stemma all example-sketch
+      - name: Refuse committed audio
+        run: |
+          if git ls-files -- 'tracks/*/renders/*' | grep -q .; then
+            echo "Rendered audio must not be committed" >&2; exit 1
+          fi
