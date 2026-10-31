@@ -1,0 +1,48 @@
+[project]
+name = "stemma"
+version = "0.1.0"
+description = "Headless, text-first music production toolchain for AI agents"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Joe Heffer" }]
+requires-python = ">=3.12"
+dependencies = [
+    "jsonschema>=4.23",
+    "librosa>=0.11",
+    "mido>=1.3",
+    "numpy>=2.0",
+    "pretty_midi>=0.2.10",
+    "pyloudnorm>=0.1.1",
+    "pyyaml>=6.0",
+    "scipy>=1.13",
+    "soundfile>=0.12",
+]
+
+[project.optional-dependencies]
+# Pedalboard is GPL-3.0. It is optional so the core package stays MIT-clean;
+# `stemma mix` falls back to scipy DSP when it is absent.
+fx = ["pedalboard>=0.9.16"]
+
+[project.scripts]
+stemma = "stemma.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/stemma"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
