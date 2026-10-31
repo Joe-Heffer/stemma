@@ -25,6 +25,22 @@ def _fit(x: np.ndarray, n: int) -> np.ndarray:
     return x[:n] if len(x) >= n else np.pad(x, ((0, n - len(x)), (0, 0)))
 
 
+def _sidechain(spec: Spec, sc: dict | None, sdir, n: int) -> np.ndarray | None:
+    """Gain curve keyed from another part's raw stem, or None."""
+    if not sc:
+        return None
+    wav = sdir / f"{sc['source']}.wav"
+    if not wav.is_file():
+        if spec.part(sc["source"]).get("optional"):
+            return None
+        raise StemmaError(f"sidechain source stem {wav} missing; render it first")
+    trigger = _fit(load_stem(wav, spec.sample_rate), n)
+    return dsp.duck_gain(trigger, spec.sample_rate, sc.get("depth_db", 6),
+                         sc.get("threshold_db", -30), sc.get("ratio", 4),
+                         sc.get("attack_ms", 5), sc.get("release_ms", 150),
+                         sc.get("filter_hz"))
+
+
 def mix(spec: Spec, section: str | None = None) -> dict:
     sr, tempo = spec.sample_rate, spec.tempo
     engine = choose_engine(spec.mix.get("engine", "auto"))
@@ -55,6 +71,9 @@ def mix(spec: Spec, section: str | None = None) -> dict:
         x = _fit(load_stem(wav, sr), n)
         meter: list = []
         x = apply_chain(x, m.get("fx", []), sr, tempo, engine, spec.resolve, meter)
+        duck = _sidechain(spec, m.get("sidechain"), sdir, n)
+        if duck is not None:
+            x = x * duck[:, None]
         x = x * dsp.db_to_amp(m.get("gain_db", 0))
         x = _fit(dsp.pan_stereo(x, m.get("pan", 0), m.get("width", 1)), n)
         # Post-fader stem, as heard in the mix, for analysis.
@@ -67,6 +86,15 @@ def mix(spec: Spec, section: str | None = None) -> dict:
                  "peak_dbfs": round(dsp.amp_to_db(np.abs(x).max()), 2)}
         if meter:
             entry["dynamics"] = meter
+        if duck is not None:
+            duck_db = -20 * np.log10(np.maximum(duck, 1e-9))
+            entry["sidechain"] = {"source": m["sidechain"]["source"],
+                                  "max_duck_db": round(float(duck_db.max()), 1),
+                                  "percent_ducked_over_1db":
+                                      round(float(np.mean(duck_db > 1) * 100), 1)}
+        elif m.get("sidechain"):
+            entry["sidechain"] = {"source": m["sidechain"]["source"],
+                                  "status": "skipped (no trigger stem)"}
         report["parts"].append(entry)
     for b in spec.buses:
         meter = []

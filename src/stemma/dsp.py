@@ -406,3 +406,21 @@ def gain_reduction(before: np.ndarray, after: np.ndarray, sr: int,
     gr = np.maximum(rb[keep] - (ra[keep] - offset_db), 0)
     return {"max_db": round(float(gr.max()), 1), "mean_db": round(float(gr.mean()), 1),
             "percent_over_1db": round(float(np.mean(gr > 1) * 100), 1)}
+
+
+def duck_gain(trigger: np.ndarray, sr: int, depth_db=6.0, threshold_db=-30.0, ratio=4.0,
+              attack_ms=5.0, release_ms=150.0, filter_hz=None) -> np.ndarray:
+    """Per-sample linear gain that ducks a signal while ``trigger`` is loud.
+
+    A compressor keyed from another signal: above ``threshold_db`` gain falls
+    by ``1 - 1/ratio`` dB per dB, never by more than ``depth_db``. ``filter_hz``
+    lowpasses the trigger first so, say, only the kick of a drum stem counts.
+    """
+    t = as_2d(trigger)
+    if filter_hz:
+        t = filt(filt(t, "lowpass", filter_hz, sr), "lowpass", filter_hz, sr)
+    level = np.max(np.abs(t), axis=1)
+    env = envelope_follower(level, sr, attack_ms, release_ms)
+    env_db = 20 * np.log10(np.maximum(env, 1e-9))
+    over = np.maximum(env_db - threshold_db, 0)
+    return 10 ** (-np.minimum(over * (1 - 1 / ratio), depth_db) / 20)

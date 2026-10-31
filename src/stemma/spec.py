@@ -62,6 +62,14 @@ def validate(data: Any) -> list[str]:
         for send in mix.get("sends", {}):
             if send not in buses - {"master"}:
                 errors.append(f"$.parts[{i}].mix.sends: unknown bus {send!r}")
+        sc = mix.get("sidechain")
+        if sc:
+            names = {p["name"] for p in data["parts"]}
+            if sc["source"] == part["name"]:
+                errors.append(f"$.parts[{i}].mix.sidechain.source: a part cannot duck itself")
+            elif sc["source"] not in names:
+                errors.append(f"$.parts[{i}].mix.sidechain.source: unknown part "
+                              f"{sc['source']!r}")
         if part["source"] in ("sfizz", "csound", "faust") and "path" not in part.get("sound", {}):
             errors.append(f"$.parts[{i}].sound.path: required for source {part['source']!r}")
         if part["source"] == "elevenlabs":

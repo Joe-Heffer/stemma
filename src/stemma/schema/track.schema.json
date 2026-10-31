@@ -164,7 +164,22 @@
             "sends": {"type": "object", "additionalProperties": {"type": "number"}, "description": "Bus name to send level in dB (post-fader)."},
             "mute": {"type": "boolean", "default": false},
             "solo": {"type": "boolean", "default": false},
-            "fx": {"$ref": "#/$defs/fx_chain"}
+            "fx": {"$ref": "#/$defs/fx_chain"},
+            "sidechain": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["source"],
+              "description": "Duck this part while another part's raw stem is loud (e.g. bass under the kick). Applied after fx, before the fader.",
+              "properties": {
+                "source": {"$ref": "#/$defs/identifier", "description": "The part whose stem triggers the ducking."},
+                "depth_db": {"type": "number", "exclusiveMinimum": 0, "maximum": 40, "default": 6, "description": "Most the part is turned down."},
+                "threshold_db": {"type": "number", "maximum": 0, "default": -30},
+                "ratio": {"type": "number", "minimum": 1, "default": 4},
+                "attack_ms": {"type": "number", "exclusiveMinimum": 0, "default": 5},
+                "release_ms": {"type": "number", "exclusiveMinimum": 0, "default": 150},
+                "filter_hz": {"$ref": "#/$defs/freq", "description": "Lowpass the trigger first, e.g. 120 so only the kick of a drum stem ducks."}
+              }
+            }
           }
         },
         "score": {
