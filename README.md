@@ -1,4 +1,4 @@
-# stemma
+# Stemma 🎼
 
 Command-line tooling that lets an AI agent such as Claude Code produce music
 tracks and sounds from a written brief, with no DAW and no GUI.
