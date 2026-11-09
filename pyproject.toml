@@ -31,7 +31,7 @@ plot = ["matplotlib>=3.8"]
 stemma = "stemma.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.6"]
+dev = ["pytest>=8", "ruff>=0.17.4"]
 
 [build-system]
 requires = ["hatchling>=1.33.0"]
